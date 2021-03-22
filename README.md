@@ -51,7 +51,6 @@ optional arguments:
     2            | The category to which each sample belongs (Graph will be colored by these categories)
 
 ### Output
-In the working directory, a log file will be generated (e.g. 20210318230020.log).
 In the output directory, 6 files will be generated as listed below:
 
 ```
