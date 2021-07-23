@@ -49,15 +49,13 @@ def thetayc(v1, v2):
 
 def CalculateDist(count_table1, count_table2):
     sumval = 0
-    key_union = set(count_table1).union(count_table2)
-    for key in key_union:
-        if key in count_table1:
-            if key in count_table2:
-                sumval += thetayc(count_table1[key].count_vec,count_table2[key].count_vec)
-            else:
-                sumval += thetayc(count_table1[key].count_vec,std_vec[count_table1[key].ref_allele])
-        else:
-            sumval += thetayc(count_table2[key].count_vec,std_vec[count_table2[key].ref_allele])
+    key_inter = set(count_table1).intersection(count_table2)
+    for key in key_inter:
+        sumval += thetayc(count_table1[key].count_vec,count_table2[key].count_vec)
+    for key in set(count_table1) - key_inter:
+        sumval += thetayc(count_table1[key].count_vec,std_vec[count_table1[key].ref_allele])
+    for key in set(count_table2) - key_inter:
+        sumval += thetayc(count_table2[key].count_vec,std_vec[count_table2[key].ref_allele])
     return sumval
 
 class PosCount:
