@@ -5,10 +5,22 @@ import sys, os, subprocess, shutil, csv
 import argparse,  platform
 import Bio.SeqIO, pysam, numpy as np
 from time import time
+import pysamstats
 
 from collections import OrderedDict
 import numpy as np
 
+
+std_vec = {
+        "A":[1,0,0,0],
+        "C":[0,1,0,0],
+        "G":[0,0,1,0],
+        "T":[0,0,0,1],
+        "a":[1,0,0,0],
+        "c":[0,1,0,0],
+        "g":[0,0,1,0],
+        "t":[0,0,0,1]
+        }
 
 def check_path_existence(path):
     abspath = os.path.abspath(path)
@@ -37,10 +49,16 @@ def thetayc(v1, v2):
 
 def CalculateDist(count_table1, count_table2):
     sumval = 0
-    for key in count_table1: 
-        sumval += thetayc(count_table1[key].count_vec,count_table2[key].count_vec)
+    key_union = set(count_table1).union(count_table2)
+    for key in key_union:
+        if key in count_table1:
+            if key in count_table2:
+                sumval += thetayc(count_table1[key].count_vec,count_table2[key].count_vec)
+            else:
+                sumval += thetayc(count_table1[key].count_vec,std_vec[count_table1[key].ref_allele])
+        else:
+            sumval += thetayc(count_table2[key].count_vec,std_vec[count_table2[key].ref_allele])
     return sumval
-
 
 class PosCount:
     def __init__(self,ref_id,ref_pos,ref_allele,count_vec):
@@ -57,6 +75,7 @@ class PosCount:
                 self.count_vec
                 )
 
+###########################
 class CountTab:
     def __init__(self,pos_dict):
         self.pos_dict = pos_dict
@@ -70,7 +89,6 @@ class CountTab:
     def __iter__(self):
         return iter(self.pos_dict)
 
-###########################
 #  construct contig file  #
 ###########################
 
@@ -95,7 +113,7 @@ def initialize_contigs(refpath):
 #  read bam file and covert to CountTab  #
 ##########################################
 
-def bam2CountTab(bampath,refpath,baseq):
+def bam2CountTab(bampath,refpath,baseq,required_coverage):
     contigs=initialize_contigs(refpath)
     TableCount = CountTab(pos_dict = OrderedDict())
 
@@ -103,27 +121,32 @@ def bam2CountTab(bampath,refpath,baseq):
     with pysam.AlignmentFile(bampath, 'rb') as bamfile:
         for contig_id in sorted(list(contigs.keys())):
             contig = contigs[contig_id]
-            counts = bamfile.count_coverage(
-                contig.id,
-                start=0,
-                end=contig.length,
-                quality_threshold=baseq,
-                read_callback="all")
-            for i in range(0, contig.length):
-                ref_pos = i+1
-                ref_allele = contig.seq[i]
-                count_a = counts[0][i]
-                count_c = counts[1][i]
-                count_g = counts[2][i]
-                count_t = counts[3][i]
-                pos_count = PosCount(
-                        ref_id = contig.id,
-                        ref_pos = ref_pos,
-                        ref_allele = ref_allele,
-                        count_vec = np.array([count_a, count_c, count_g, count_t])
-                        )
-                TableCount[pos_count.ref_pos] = pos_count
-    bamfile.close()
+            stat_gen = pysamstats.stat_variation(
+                bamfile,
+                fafile=refpath,
+                chrom=contig.id,
+                min_mapq=baseq
+                )
+            stat_list = list(stat_gen)
+            pos_covered = np.count_nonzero([i["reads_all"]>0 for i in stat_list])
+            if pos_covered < contig.length * required_coverage:
+                print("The " + str(bampath) + " has less the "+ str(required_coverage*100)+"% genome coverage and it will be removed from analysis")
+            else:
+                for pos in stat_list:
+                    if pos["mismatches"] != 0:
+                        count_a = pos["A"]
+                        count_c = pos["C"]
+                        count_g = pos["G"]
+                        count_t = pos["T"]
+                        pos_count = PosCount(
+                                ref_id = contig.id,
+                                ref_pos = pos["pos"],
+                                ref_allele = pos["ref"],
+                                count_vec = np.array([count_a, count_c, count_g, count_t])
+                                )
+                        TableCount[pos_count.ref_pos] = pos_count
+
+            bamfile.close()
     return TableCount
 
 ###############################################
@@ -140,7 +163,7 @@ def dist2PcoA(dist):
 #  check the input files and compute the CountTab  #
 ####################################################
 
-def file2CountTabDict(in_file,refpath,baseq):
+def file2CountTabDict(in_file,refpath,baseq,required_coverage):
     dt = OrderedDict()
     abf = check_path_existence(in_file)
     with open(abf) as f:
@@ -154,7 +177,7 @@ def file2CountTabDict(in_file,refpath,baseq):
 #            elif bn.lower().endswith('.bam'):
 #                dt[bn] = bam2CountTab(each_file,refpath)
             if bn.lower().endswith('.bam'):
-                dt[bn] = bam2CountTab(each_file,refpath,baseq)
+                dt[bn] = bam2CountTab(each_file,refpath,baseq,required_coverage)
             else:
                 sys.exit("File: {} unrecognized file extension! Please check!".format(abspath))
     f.close()
@@ -180,7 +203,8 @@ if __name__ == '__main__':
     parser = ArgumentParser(description='Compute pairwise metagenome distance for SARS-CoV-2 samples')
     parser.add_argument('-f', '--file',help='file that lists the path to sorted bam files', required=True,dest='file',metavar='')
     parser.add_argument('-m', '--meta',help='file containing metadata info', required=True,dest='meta',metavar='')
-    parser.add_argument('-q', '--qual',help='alignment quality threshold', required=False,default=0,dest='baseq',metavar='')
+    parser.add_argument('-q', '--qual',help='Only reads with mapping quality equal to or greater than this value will be counted (0 by default).', required=False,default=0,dest='baseq',metavar='')
+    parser.add_argument('-c', '--cov',help='Only samples with reads mapped to equal to or greater than this fraction of the genome will be used for PcoA analysis (0.5 by default).', required=False,default=0.5,dest='required_coverage',metavar='')
     parser.add_argument('-r', '--ref', help='input reference file', required=False,default="data/NC_045512.2.fasta",dest='refpath',metavar='')
     parser.add_argument('-o', '--out', help='output folder name', required=True,dest='outpath',metavar='')
     args = parser.parse_args()
@@ -201,7 +225,7 @@ if __name__ == '__main__':
         logger.warning('Outpath already exists and will be overwritten!')
 
     logger.info('Creating count table')
-    ctd = file2CountTabDict(args.file, args.refpath,args.baseq)
+    ctd = file2CountTabDict(args.file, args.refpath,args.baseq,args.required_coverage)
     logger.info('Caculating dissimilarity distance')
     dist = dt2dist(ctd)
     dist.write("{}/distance.txt".format(args.outpath))
