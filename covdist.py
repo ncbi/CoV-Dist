@@ -129,6 +129,7 @@ def bam2CountTab(bampath,refpath,baseq,required_coverage):
             pos_covered = np.count_nonzero([i["reads_all"]>0 for i in stat_list])
             if pos_covered < contig.length * required_coverage:
                 print("The " + str(bampath) + " has less the "+ str(required_coverage*100)+"% genome coverage and it will be removed from analysis")
+                return None
             else:
                 for pos in stat_list:
                     if pos["mismatches"] != 0:
@@ -175,7 +176,9 @@ def file2CountTabDict(in_file,refpath,baseq,required_coverage):
 #            elif bn.lower().endswith('.bam'):
 #                dt[bn] = bam2CountTab(each_file,refpath)
             if bn.lower().endswith('.bam'):
-                dt[bn] = bam2CountTab(each_file,refpath,baseq,required_coverage)
+                btc = bam2CountTab(each_file,refpath,baseq,required_coverage)
+                if btc:
+                    dt[bn] = btc
             else:
                 sys.exit("File: {} unrecognized file extension! Please check!".format(abspath))
     f.close()
