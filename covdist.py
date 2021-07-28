@@ -123,7 +123,7 @@ def bam2CountTab(bampath,refpath,baseq,required_coverage):
                 bamfile,
                 fafile=refpath,
                 chrom=contig.id,
-                min_mapq=baseq
+                min_baseq=baseq
                 )
             stat_list = list(stat_gen)
             pos_covered = np.count_nonzero([i["reads_all"]>0 for i in stat_list])
