@@ -11,7 +11,6 @@ It will
 ## Prerequisites
 + [Biopython](https://biopython.org/)
 + [pysam](https://github.com/pysam-developers/pysam)(>=0.15.3)
-+ [pysamstats](https://github.com/alimanfoo/pysamstats)
 + [scikit-bio](https://github.com/biocore/scikit-bio) (>=0.5.6)
 + [seaborn](https://github.com/mwaskom/seaborn)
 
@@ -26,22 +25,21 @@ conda activate cov-dist
 ## Tutorial
 
 ```
-usage: covdist.py [-h] -f  -m  [-q] [-c] [-r] -o
+usage: covdist.py [-h] -f  [-q] [-c] [-r] [-t] -o
 
 Compute pairwise metagenome distance for SARS-CoV-2 samples
 
 optional arguments:
-  -h, --help    show this help message and exit
-  -f , --file   file that lists the path to sorted bam files
-  -m , --meta   file containing metadata info
-  -q , --qual   Only reads with mapping quality equal to or greater than this
-                value will be counted (0 by default).
-  -c , --cov    Only samples with reads mapped to equal to or greater than
-                this fraction of the genome will be used for PcoA analysis
-                (0.5 by default).
-  -r , --ref    input reference file
-  -o , --out    output folder name
-
+  -h, --help       show this help message and exit
+  -f , --file      file that lists the path to sorted bam files
+  -q , --qual      Only reads with mapping quality equal to or greater than
+                   this value will be counted (0 by default).
+  -c , --cov       Only samples with reads mapped to equal to or greater than
+                   this fraction of the genome will be used for PcoA analysis
+                   (0.5 by default).
+  -r , --ref       input reference file
+  -t , --threads   number of threads used for computing
+  -o , --out       output folder name
 ```
 
 ### Input
@@ -62,21 +60,12 @@ In the output directory, 6 files will be generated as listed below:
 out_dir/
 ├── distance.txt
 ├── ordination_result.txt
-├── PcoA_plot_3D.png
-├── PcoA_plot_3D.svg
-├── PcoA_plot.png
-└── PcoA_plot.svg
 
-0 directories, 6 files
+0 directories, two files
 ```
 
 * Calculated distance matrix: `distance.txt`
 * Output from the principal coordinates analysis: `ordination_result.txt`
-* PcoA plot(based on first two axes or three axes) in png and svg format:
-  * `PcoA_plot_3D.png`
-  * `PcoA_plot_3D.svg`
-  * `PcoA_plot.png`
-  * `PcoA_plot.svg`
 
 ## Notes
 * If there is zero coverage for a position in the alignment, we assume the dissimilarity in that position is zero, which could lead to an underestimation of the distance between samples with low coverage.

@@ -5,11 +5,10 @@ import sys, os, subprocess, shutil, csv
 import argparse,  platform
 import Bio.SeqIO, pysam, numpy as np
 from time import time
-import pysamstats
-
+from multiprocessing import Pool, cpu_count
+from functools import partial
+from itertools import combinations
 from collections import OrderedDict
-import numpy as np
-
 
 std_vec = {
         "A":[1,0,0,0],
@@ -112,6 +111,7 @@ def initialize_contigs(refpath):
 ##########################################
 
 def bam2CountTab(bampath,refpath,baseq,required_coverage):
+    bn = os.path.basename(check_path_existence(bampath))
     contigs=initialize_contigs(refpath)
     TableCount = CountTab(pos_dict = OrderedDict())
 
@@ -119,34 +119,42 @@ def bam2CountTab(bampath,refpath,baseq,required_coverage):
     with pysam.AlignmentFile(bampath, 'rb') as bamfile:
         for contig_id in sorted(list(contigs.keys())):
             contig = contigs[contig_id]
-            stat_gen = pysamstats.stat_variation(
-                bamfile,
-                fafile=refpath,
-                chrom=contig.id,
-                min_baseq=baseq
-                )
-            stat_list = list(stat_gen)
-            pos_covered = np.count_nonzero([i["reads_all"]>0 for i in stat_list])
-            if pos_covered < contig.length * required_coverage:
+            num_pos_cov = 0
+            counts = bamfile.count_coverage(
+                contig.id,
+                start=0,
+                end=contig.length,
+                quality_threshold=baseq,
+                read_callback="all")
+            covered_bases = 0
+            for i in range(0, contig.length):
+                check_coverage = counts[0][i] + counts[1][i] + counts[2][i] + counts[3][i]
+                if check_coverage > 0:
+                    covered_bases += 1
+            if covered_bases < contig.length * required_coverage:
                 print("The " + str(bampath) + " has less the "+ str(required_coverage*100)+"% genome coverage and it will be removed from analysis")
                 return None
             else:
-                for pos in stat_list:
-                    if pos["mismatches"] != 0:
-                        count_a = pos["A"]
-                        count_c = pos["C"]
-                        count_g = pos["G"]
-                        count_t = pos["T"]
+                for i in range(0, contig.length):
+                    check_coverage = counts[0][i] + counts[1][i] + counts[2][i] + counts[3][i]
+                    if check_coverage > 0:
+                        ref_pos = i+1
+                        ref_allele = contig.seq[i]
+                        count_a = counts[0][i]
+                        count_c = counts[1][i]
+                        count_g = counts[2][i]
+                        count_t = counts[3][i]
                         pos_count = PosCount(
                                 ref_id = contig.id,
-                                ref_pos = pos["pos"],
-                                ref_allele = pos["ref"],
+                                ref_pos = ref_pos,
+                                ref_allele = ref_allele,
                                 count_vec = np.array([count_a, count_c, count_g, count_t])
                                 )
                         TableCount[pos_count.ref_pos] = pos_count
+    bamfile.close()
+    return (bn, TableCount)
 
-            bamfile.close()
-    return TableCount
+
 
 ###############################################
 #  construct distance matrix between samples  #
@@ -162,36 +170,42 @@ def dist2PcoA(dist):
 #  check the input files and compute the CountTab  #
 ####################################################
 
-def file2CountTabDict(in_file,refpath,baseq,required_coverage):
+def file2CountTabDict(in_file,refpath,baseq,required_coverage,cpus):
     dt = OrderedDict()
     abf = check_path_existence(in_file)
+    bamlist = list()
     with open(abf) as f:
         for each_file in f.read().splitlines():
-            bn = os.path.basename(check_path_existence(each_file))
-#            if bn.lower().endswith(('.fa', '.fasta', '.fna','.fas')):
-#                prefix=os.path.splitext(each_file)[0]
-#                cmdline = "minimap2 -a {refpath} {each_file}|samtools view -bS|samtools sort > {prefix}.bam".format(refpath=refpath,each_file=each_file,prefix=prefix)
-#                os.system(cmdline)
-#                dt[bn] = bam2CountTab("{}.bam".format(prefix),refpath)
-#            elif bn.lower().endswith('.bam'):
-#                dt[bn] = bam2CountTab(each_file,refpath)
-            if bn.lower().endswith('.bam'):
-                btc = bam2CountTab(each_file,refpath,baseq,required_coverage)
-                if btc:
-                    dt[bn] = btc
+            if each_file.lower().endswith('.bam'):
+                bamlist.append(each_file)
             else:
                 sys.exit("File: {} unrecognized file extension! Please check!".format(abspath))
     f.close()
+
+    with Pool(cpus) as p:
+        list_dt=p.map(partial(bam2CountTab,refpath=refpath,baseq=baseq,required_coverage=required_coverage),bamlist)
+    for item in list_dt:
+        if item:
+            dt[item[0]]= item[1]
     return dt
 
-def dt2dist(dt):
+
+def dt2dist(dt,cpus):
     from skbio import DistanceMatrix
-    dist = np.zeros(shape=(len(dt),len(dt)))
+
     key_list = list(dt.keys())
-    for i in range(len(dt)):
-        for j in range(i):
-            dist[j,i] = CalculateDist(dt[key_list[i]],dt[key_list[j]])
-            dist[i,j] = CalculateDist(dt[key_list[i]],dt[key_list[j]])
+    comb = list(combinations(range(len(dt)), 2))
+
+    inputs_ct = [(dt[key_list[i]],dt[key_list[j]]) for (i,j) in comb]
+    with Pool() as p:
+        list_dist = p.starmap(CalculateDist, inputs_ct)
+
+    dist = np.zeros(shape=(len(dt),len(dt)))
+    idx =0 
+    for (i,j) in comb:
+        dist[j,i] = list_dist[idx]
+        dist[i,j] = dist[j,i]
+        idx += 1
     np.fill_diagonal(dist, 0)
     dm = DistanceMatrix(dist,key_list) 
     return dm
@@ -203,10 +217,10 @@ if __name__ == '__main__':
     from argparse import ArgumentParser
     parser = ArgumentParser(description='Compute pairwise metagenome distance for SARS-CoV-2 samples')
     parser.add_argument('-f', '--file',help='file that lists the path to sorted bam files', required=True,dest='file',metavar='')
-    parser.add_argument('-m', '--meta',help='file containing metadata info', required=True,dest='meta',metavar='')
     parser.add_argument('-q', '--qual',help='Only reads with mapping quality equal to or greater than this value will be counted (0 by default).', required=False,default=0,dest='baseq',metavar='',type=float)
     parser.add_argument('-c', '--cov',help='Only samples with reads mapped to equal to or greater than this fraction of the genome will be used for PcoA analysis (0.5 by default).', required=False,default=0.5,dest='required_coverage',metavar='',type=float)
     parser.add_argument('-r', '--ref', help='input reference file', required=False,default="data/NC_045512.2.fasta",dest='refpath',metavar='')
+    parser.add_argument('-t', '--threads', help='number of threads used for computing', required=False,default=cpu_count(),dest='cpus',metavar='',type=int)
     parser.add_argument('-o', '--out', help='output folder name', required=True,dest='outpath',metavar='')
     args = parser.parse_args()
 
@@ -226,30 +240,14 @@ if __name__ == '__main__':
         logger.warning('Outpath already exists and will be overwritten!')
 
     logger.info('Creating count table')
-    ctd = file2CountTabDict(args.file, args.refpath,args.baseq,args.required_coverage)
+    ctd = file2CountTabDict(args.file, args.refpath,args.baseq,args.required_coverage,args.cpus)
     logger.info('Caculating dissimilarity distance')
-    dist = dt2dist(ctd)
+    dist = dt2dist(ctd,args.cpus)
     dist.write("{}/distance.txt".format(args.outpath))
 
     logger.info('Obtaining ordination')
     ordination_result = dist2PcoA(dist)
     ordination_result.write("{}/ordination_result.txt".format(args.outpath))
 
-    import pandas as pd
-    import matplotlib.pyplot as plt
-    import seaborn as sns
+    logger.info('Done!')
 
-    meta = pd.read_csv(args.meta,sep="\t",index_col=0,header=None,names=["info"])
-    meta['info']=meta['info'].astype("category")
-    df = pd.concat([ordination_result.samples,meta],axis=1)
-
-    logger.info('Generate PcoA plots')
-    sns.lmplot( x="PC1", y="PC2", data=df, fit_reg=False, hue='info', legend=False, palette="Set1")
-    plt.legend(loc='lower right')
-    plt.gca().set_aspect("equal",adjustable="box")
-    plt.savefig("{}/PcoA_plot.svg".format(args.outpath))
-    plt.savefig("{}/PcoA_plot.png".format(args.outpath))
-
-    plt2 = ordination_result.plot( df=meta, column='info',cmap='Set1', s=50)
-    plt2.savefig("{}/PcoA_plot_3D.svg".format(args.outpath))
-    plt2.savefig("{}/PcoA_plot_3D.png".format(args.outpath))
