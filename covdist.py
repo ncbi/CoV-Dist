@@ -154,7 +154,38 @@ def bam2CountTab(bampath,refpath,baseq,required_coverage):
     bamfile.close()
     return (bn, TableCount)
 
+##########################################
+#  read tsv files and covert to CountTab  #
+##########################################
 
+def rowCount(table_group):
+    import pandas as pd
+    TableCount = CountTab(pos_dict = OrderedDict())
+    for row_index, row in table_group.iterrows():
+        pos_count = PosCount(
+            ref_id = row["Ref_id"],
+            ref_pos = row["Pos"],
+            ref_allele = row["Ref"],
+            count_vec = std_vec[row["Alt"]])
+        TableCount[pos_count.ref_pos] = pos_count
+    return TableCount
+    
+
+def table2CountTab(tsv_table):
+    import pandas as pd
+    #setting up dictionaries
+    tsv_dt = OrderedDict()
+    #voc_dt = OrderedDict()
+    if tsv_table != "":
+        #setting up file user input (the user needs to keep the column order)
+        tsv = pd.read_csv(tsv_table, sep="\t", header=0, names=["Ref_id", "SNV", "Ref", "Pos", "Alt", "VOC"])
+        grouped_tsv = tsv.groupby("VOC")
+        for name, tsv_group in grouped_tsv: 
+            tsv_tablecount = rowCount(tsv_group)
+            tsv_dt[name] = tsv_tablecount
+    else:
+        None
+    return tsv_dt
 
 ###############################################
 #  construct distance matrix between samples  #
@@ -189,8 +220,12 @@ def file2CountTabDict(in_file,refpath,baseq,required_coverage,cpus):
             dt[item[0]]= item[1]
     return dt
 
+def tsvmergetoctd(ctd, tsv_table):
+    tsv_ct = table2CountTab(tsv_table)
+    dt_merged = {**ctd, **tsv_ct}
+    return dt_merged
 
-def dt2dist(dt,cpus):
+def dt2dist(dt, cpus):
     from skbio import DistanceMatrix
 
     key_list = list(dt.keys())
@@ -216,12 +251,13 @@ if __name__ == '__main__':
     import logging, time
     from argparse import ArgumentParser
     parser = ArgumentParser(description='Compute pairwise metagenome distance for SARS-CoV-2 samples')
-    parser.add_argument('-f', '--file',help='file that lists the path to sorted bam files', required=True,dest='file',metavar='')
-    parser.add_argument('-q', '--qual',help='Only reads with mapping quality equal to or greater than this value will be counted (0 by default).', required=False,default=0,dest='baseq',metavar='',type=float)
-    parser.add_argument('-c', '--cov',help='Only samples with reads mapped to equal to or greater than this fraction of the genome will be used for PcoA analysis (0.5 by default).', required=False,default=0.5,dest='required_coverage',metavar='',type=float)
-    parser.add_argument('-r', '--ref', help='input reference file', required=False,default="data/NC_045512.2.fasta",dest='refpath',metavar='')
-    parser.add_argument('-t', '--threads', help='number of threads used for computing', required=False,default=cpu_count(),dest='cpus',metavar='',type=int)
-    parser.add_argument('-o', '--out', help='output folder name', required=True,dest='outpath',metavar='')
+    parser.add_argument('-f', '--file', help='file that lists the path to sorted bam files', required=True, dest='file', metavar='')
+    parser.add_argument('-q', '--qual', help='Only reads with mapping quality equal to or greater than this value will be counted (0 by default).', required=False, default=0, dest='baseq', metavar='', type=float)
+    parser.add_argument('-c', '--cov', help='Only samples with reads mapped to equal to or greater than this fraction of the genome will be used for PcoA analysis (0.5 by default).', required=False, default=0.5, dest='required_coverage', metavar='', type=float)
+    parser.add_argument('-v', '--tsv', help='Option to use a 5 column tab delimited file containing nucleotide mutations from lineages of interest to be added to analysis', default="", required=False, dest='tsv_file', metavar='')
+    parser.add_argument('-r', '--ref', help='input reference file', required=False, default="data/NC_045512.2.fasta", dest='refpath', metavar='')
+    parser.add_argument('-t', '--threads', help='number of threads used for computing', required=False, default=cpu_count(), dest='cpus', metavar='', type=int)
+    parser.add_argument('-o', '--out', help='output folder name', required=True, dest='outpath', metavar='')
     args = parser.parse_args()
 
     # write log file
@@ -241,8 +277,10 @@ if __name__ == '__main__':
 
     logger.info('Creating count table')
     ctd = file2CountTabDict(args.file, args.refpath,args.baseq,args.required_coverage,args.cpus)
+    dt_merged = tsvmergetoctd(ctd, args.tsv_file)
+
     logger.info('Caculating dissimilarity distance')
-    dist = dt2dist(ctd,args.cpus)
+    dist = dt2dist(dt_merged,args.cpus)
     dist.write("{}/distance.txt".format(args.outpath))
 
     logger.info('Obtaining ordination')
