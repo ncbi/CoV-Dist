@@ -1,98 +1,82 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import sys, os, subprocess, shutil, csv
-import argparse,  platform
-import Bio.SeqIO, pysam, numpy as np
-from time import time
+import sys, os
+import logging, vcf, click
+import Bio.SeqIO, numpy as np
 from multiprocessing import Pool, cpu_count
 from functools import partial
 from itertools import combinations
 from collections import OrderedDict
+import pandas as pd
 
 std_vec = {
-        "A":[1,0,0,0],
-        "C":[0,1,0,0],
-        "G":[0,0,1,0],
-        "T":[0,0,0,1],
-        "a":[1,0,0,0],
-        "c":[0,1,0,0],
-        "g":[0,0,1,0],
-        "t":[0,0,0,1]
+        "A":[1.0,0.0,0.0,0.0],
+        "C":[0.0,1.0,0.0,0.0],
+        "G":[0.0,0.0,1.0,0.0],
+        "T":[0.0,0.0,0.0,1.0],
+        "a":[1.0,0.0,0.0,0.0],
+        "c":[0.0,1.0,0.0,0.0],
+        "g":[0.0,0.0,1.0,0.0],
+        "t":[0.0,0.0,0.0,1.0],
+        "N":[0.0,0.0,0.0,0.0]
         }
 
-def check_path_existence(path):
-    abspath = os.path.abspath(path)
-    try:
-        f = open(abspath)
-    except IOError:
-        sys.exit("File: {} not accessible! Please check!".format(abspath))
-    finally:
-        f.close()
-    return(abspath)
+####################
+#  define classes  #
+####################
 
-def thetayc(v1, v2):
-    # check if this position has coverage
-    if np.sum(v1) == 0 or np.sum(v2) ==0:
-        return 0
-    else:
-        # turn the vector into frequence 
-        vec1 = np.true_divide(v1,np.sum(v1))
-        vec2 = np.true_divide(v2,np.sum(v2))
-        dotsum = np.dot(vec1,vec2)
-        dist = np.sum(np.square(vec1),axis=0) + np.sum(np.square(vec2),axis=0) 
-        if dist == dotsum:
-            return 0
-        else:
-            return 1-dotsum/(dist-dotsum)
-
-def CalculateDist(count_table1, count_table2):
-    sumval = 0
-    key_inter = set(count_table1).intersection(count_table2)
-    for key in key_inter:
-        sumval += thetayc(count_table1[key].count_vec,count_table2[key].count_vec)
-    for key in set(count_table1) - key_inter:
-        sumval += thetayc(count_table1[key].count_vec,std_vec[count_table1[key].ref_allele])
-    for key in set(count_table2) - key_inter:
-        sumval += thetayc(count_table2[key].count_vec,std_vec[count_table2[key].ref_allele])
-    return sumval
-
-class PosCount:
-    def __init__(self,ref_id,ref_pos,ref_allele,count_vec):
+class PosFreq:
+    def __init__(self,ref_id,ref_pos,ref_allele,freq_vec):
         self.ref_id = ref_id
         self.ref_pos = ref_pos
         self.ref_allele = ref_allele
-        self.count_vec = count_vec
+        self.freq_vec = freq_vec
 
     def __repr__(self):
-        return "{0}(id={1!r}, pos={2!r}, count_vec={3!r})".format(
+        # !r means use __repr__ insteadd of __str__
+        return "{0}(id={1!r}, pos={2!r}, freq_vec={3!r})".format(
                 self.__class__.__name__,
                 self.ref_id,
                 self.ref_pos,
-                self.count_vec
+                self.freq_vec
                 )
-
-###########################
-class CountTab:
+                
+class FreqTab:
     def __init__(self,pos_dict):
         self.pos_dict = pos_dict
+        self.filtered_pos = []
 
     def __getitem__(self,key):
         return self.pos_dict[key]
 
-    def __setitem__(self,key,poscount):
-        self.pos_dict.update({key:poscount})
+    def __setitem__(self,key,posfreq):
+        self.pos_dict.update({key:posfreq})
 
     def __iter__(self):
         return iter(self.pos_dict)
+    
+    def __repr__(self):
+        string = ""
+        for key in self.pos_dict:
+            string += str(key) + '_' + repr(self.pos_dict[key]) + "\n"
+        return(string)
 
-#  construct contig file  #
-###########################
+    def filter_pos(self, pos_depth_dict, depth_cutoff=0):
+        # exclude low depth positions
+        for key in pos_depth_dict:
+            if pos_depth_dict[key] <= depth_cutoff:
+                # del self.pos_dict[key]
+                self.filtered_pos.append(key)
 
 class Contig:
     """ Base class for contig """
     def __init__(self, id):
         self.id = id
+
+#########################
+#  essential functions  #
+#########################
 
 def initialize_contigs(refpath):
     contigs = {}
@@ -106,124 +90,183 @@ def initialize_contigs(refpath):
     infile.close()
     return contigs
 
-##########################################
-#  read bam file and covert to CountTab  #
-##########################################
-
-def bam2CountTab(bampath,refpath,baseq,required_coverage):
-    bn = os.path.basename(check_path_existence(bampath))
-    contigs=initialize_contigs(refpath)
-    TableCount = CountTab(pos_dict = OrderedDict())
-
-    pysam.index(bampath)
-    with pysam.AlignmentFile(bampath, 'rb') as bamfile:
-        for contig_id in sorted(list(contigs.keys())):
-            contig = contigs[contig_id]
-            num_pos_cov = 0
-            counts = bamfile.count_coverage(
-                contig.id,
-                start=0,
-                end=contig.length,
-                quality_threshold=baseq,
-                read_callback="all")
-            covered_bases = 0
-            for i in range(0, contig.length):
-                check_coverage = counts[0][i] + counts[1][i] + counts[2][i] + counts[3][i]
-                if check_coverage > 0:
-                    covered_bases += 1
-            if covered_bases < contig.length * required_coverage:
-                print("The " + str(bampath) + " has less the "+ str(required_coverage*100)+"% genome coverage and it will be removed from analysis")
-                return None
-            else:
-                for i in range(0, contig.length):
-                    check_coverage = counts[0][i] + counts[1][i] + counts[2][i] + counts[3][i]
-                    if check_coverage > 0:
-                        ref_pos = i+1
-                        ref_allele = contig.seq[i]
-                        count_a = counts[0][i]
-                        count_c = counts[1][i]
-                        count_g = counts[2][i]
-                        count_t = counts[3][i]
-                        pos_count = PosCount(
-                                ref_id = contig.id,
-                                ref_pos = ref_pos,
-                                ref_allele = ref_allele,
-                                count_vec = np.array([count_a, count_c, count_g, count_t])
-                                )
-                        TableCount[pos_count.ref_pos] = pos_count
-    bamfile.close()
-    return (bn, TableCount)
-
-##########################################
-#  read tsv files and covert to CountTab  #
-##########################################
-
-def rowCount(table_group):
-    import pandas as pd
-    TableCount = CountTab(pos_dict = OrderedDict())
-    for row_index, row in table_group.iterrows():
-        pos_count = PosCount(
-            ref_id = row["Ref_id"],
-            ref_pos = row["Pos"],
-            ref_allele = row["Ref"],
-            count_vec = std_vec[row["Alt"]])
-        TableCount[pos_count.ref_pos] = pos_count
-    return TableCount
-    
-
-def table2CountTab(tsv_table):
-    import pandas as pd
-    #setting up dictionaries
-    tsv_dt = OrderedDict()
-    #voc_dt = OrderedDict()
-    if tsv_table != "":
-        #setting up file user input (the user needs to keep the column order)
-        tsv = pd.read_csv(tsv_table, sep="\t", header=0, names=["Ref_id", "SNV", "Ref", "Pos", "Alt", "VOC"])
-        grouped_tsv = tsv.groupby("VOC")
-        for name, tsv_group in grouped_tsv: 
-            tsv_tablecount = rowCount(tsv_group)
-            tsv_dt[name] = tsv_tablecount
+def check_path_existence(file_path):
+    abspath = os.path.abspath(file_path)
+    if os.path.exists(abspath):
+        return(abspath)
     else:
-        None
-    return tsv_dt
+        return(None)
+
+def calculate_coverage(pos_depth_dict, contig, cov_depth_cutoff=10):
+    base_cov = 0
+    for key in pos_depth_dict:
+        ref_id = key.split(':')[0]
+        if ref_id == contig.id:
+            if pos_depth_dict[key] >= cov_depth_cutoff:
+                base_cov += 1
+    return base_cov/contig.length
+
+def thetayc(vec1, vec2):
+    # calculate Yue & Clayton measure of dissimilarity
+    if np.sum(vec1) == 0 or np.sum(vec2) ==0:
+        return 0
+    else:
+        dotsum = np.dot(vec1, vec2)
+        dist = np.sum(np.square(vec1),axis=0) + np.sum(np.square(vec2),axis=0) 
+        if dist == dotsum:
+            return 0
+        else:
+            return 1-dotsum/(dist-dotsum)
+
+# def round_vec(vec):
+#     return [round(i,3) for i in vec]
+
+def CalculateDist(freq_table1, freq_table2):
+    ### debug ###
+    # with open("test1", "w") as g:
+    #     for key in RefTableFreq:
+    #         if key in freq_table1:
+    #             vec1 = round_vec(freq_table1[key].freq_vec)
+    #         else:
+    #             vec1 = round_vec(RefTableFreq[key].freq_vec)
+    #         if key in freq_table2:
+    #             vec2 = round_vec(freq_table2[key].freq_vec)
+    #         else:
+    #             vec2 = round_vec(RefTableFreq[key].freq_vec)
+    #         val = thetayc(vec1, vec2)
+    #         v1 = "\t".join(list(map(str, vec1)))
+    #         v2 = "\t".join(list(map(str, vec2)))
+    #         g.write(str(key.split(":")[1])+"\t"+v1+"\t"+v2+"\t"+str(val)+"\n")
+
+    sumval = 0
+    key_inter = set(freq_table1).intersection(set(freq_table2))
+    for key in key_inter:
+        if key not in freq_table1.filtered_pos + freq_table2.filtered_pos:
+            sumval += thetayc(freq_table1[key].freq_vec, freq_table2[key].freq_vec)
+    for key in (set(freq_table1) - key_inter):
+        if key not in freq_table1.filtered_pos + freq_table2.filtered_pos:
+            sumval += thetayc(freq_table1[key].freq_vec, RefTableFreq[key].freq_vec)
+    for key in (set(freq_table2) - key_inter):
+        if key not in freq_table1.filtered_pos + freq_table2.filtered_pos:
+            sumval += thetayc(freq_table2[key].freq_vec, RefTableFreq[key].freq_vec)
+    return sumval
+
+#############################################
+#  read depth file and covert to dictionary #
+#############################################
+
+def depth2Dict(depth_file):
+    pos_depth_dict = OrderedDict()
+    df = pd.read_csv(depth_file, sep="\t", header=0, names=["Ref_id", "Pos", "Ref", "Depth"])
+    for _, row in df.iterrows():
+        pos_depth_dict[row['Ref_id']+":"+str(row['Pos'])] = int(row['Depth'])
+    return pos_depth_dict
+
+##########################################
+#  read ref file and covert to FreqTab   #
+##########################################
+
+def ref2FreqTable(refpath):
+    RefTableFreq = FreqTab(pos_dict = OrderedDict())
+    contigs = initialize_contigs(refpath)
+    for contig_id in sorted(list(contigs.keys())):
+        contig = contigs[contig_id]
+        for pos, base in enumerate(contig.seq):
+            if base not in "ACGTacgt":
+                base = "N"
+            ref_pos_freq = PosFreq(ref_id = contig.id,
+                                 ref_pos = pos + 1,
+                                 ref_allele = base,
+                                 freq_vec = std_vec[base])
+            key = ref_pos_freq.ref_id + ":" + str(ref_pos_freq.ref_pos)
+            RefTableFreq[key] = ref_pos_freq
+    return(RefTableFreq)
+
+##########################################
+#  read vcf file and covert to FreqTab   #
+##########################################
+
+def vcf2FreqTable(prefix, refpath, cov_depth_cutoff, required_coverage):
+    # check vcf file
+    vcf_abf = check_path_existence(prefix+'.vcf')
+    if not vcf_abf:
+        sys.exit("File: {} doesn't exist. Please check!".format(vcf_abf))
+
+    # check depth file
+    depth_abf = check_path_existence(prefix+'.depth')
+    if not depth_abf:
+        logger.warning('{} is not found. Default to set all position depths are valid.'.format(depth_abf))
+
+    prefix = os.path.basename(vcf_abf).replace(".vcf", "")
+    TableFreq = FreqTab(pos_dict = OrderedDict())
+    
+    contigs = initialize_contigs(refpath)
+
+    for contig_id in sorted(list(contigs.keys())):
+        contig = contigs[contig_id]
+        vcf_reader = vcf.Reader(open(vcf_abf, 'r'))
+        for record in vcf_reader:
+            if len(record.FILTER) >= 1 and record.FILTER[0] == 'AmpliconRemoval':
+                continue
+            if record.is_snp and record.CHROM == contig.id:
+                freq_vector = [0.0, 0.0, 0.0, 0.0]
+                for index, alt in enumerate(record.ALT):
+                    if str(alt) in 'ACGT':
+                        if 'AF' in record.INFO:
+                            if type(record.INFO['AF']) != float:
+                                freq_vector['ACGT'.index(str(alt))] = record.INFO['AF'][index]
+                            else:
+                                freq_vector['ACGT'.index(str(alt))] = record.INFO['AF']
+                        else:
+                            freq_vector['ACGT'.index(str(alt))] = 1
+                
+                # get reference base frequency
+                if 1 - sum(freq_vector) > 1e-5:
+                    freq_vector['ACGT'.index(str(record.REF))] = 1 - sum(freq_vector)
+
+                pos_freq = PosFreq(
+                    ref_id = record.CHROM,
+                    ref_pos = record.POS,
+                    ref_allele = record.REF,
+                    freq_vec = freq_vector)
+            key = pos_freq.ref_id + ":" + str(pos_freq.ref_pos)
+
+            TableFreq[key] = pos_freq
+        
+        if depth_abf:
+            # if depth path is provided, filter positions be depth
+            pos_depth_dict = depth2Dict(depth_abf)
+            TableFreq.filter_pos(pos_depth_dict, depth_cutoff=0)
+
+            coverage = calculate_coverage(pos_depth_dict, contig, cov_depth_cutoff)
+            if coverage < required_coverage:
+                logger.warning('{0} coverage ({1}%) is less than {2}% genome coverage and it will be removed from analysis!'.format(vcf_abf, coverage*100, required_coverage*100))
+
+    return (prefix, TableFreq)
 
 ###############################################
-#  construct distance matrix between samples  #
+#  parse vcf files to a dict of freq tables   #
 ###############################################
 
-def dist2PcoA(dist):
-    from skbio.stats.ordination import pcoa
-    ordination_result = pcoa(dist)
-    return ordination_result
-
-
-####################################################
-#  check the input files and compute the CountTab  #
-####################################################
-
-def file2CountTabDict(in_file,refpath,baseq,required_coverage,cpus):
+def vcf2FreqTabDict(prefix_list, refpath, cov_depth_cutoff, required_coverage, cpus):
     dt = OrderedDict()
-    abf = check_path_existence(in_file)
-    bamlist = list()
-    with open(abf) as f:
-        for each_file in f.read().splitlines():
-            if each_file.lower().endswith('.bam'):
-                bamlist.append(each_file)
-            else:
-                sys.exit("File: {} unrecognized file extension! Please check!".format(abspath))
-    f.close()
-
+    prefix_abf = check_path_existence(prefix_list)
+    if prefix_abf:
+        prefixlist = [line.strip() for line in open(prefix_abf)]
+    else:
+        sys.exit("File: {} doesn't exist. Please check!".format(prefix_abf))
+    
     with Pool(cpus) as p:
-        list_dt=p.map(partial(bam2CountTab,refpath=refpath,baseq=baseq,required_coverage=required_coverage),bamlist)
+        list_dt = p.map(partial(vcf2FreqTable, refpath=refpath, cov_depth_cutoff=cov_depth_cutoff, required_coverage=required_coverage), prefixlist)
+
     for item in list_dt:
         if item:
             dt[item[0]]= item[1]
     return dt
 
-def tsvmergetoctd(ctd, tsv_table):
-    tsv_ct = table2CountTab(tsv_table)
-    dt_merged = {**ctd, **tsv_ct}
-    return dt_merged
+###############################################
+#  construct distance matrix between samples  #
+###############################################
 
 def dt2dist(dt, cpus):
     from skbio import DistanceMatrix
@@ -231,36 +274,39 @@ def dt2dist(dt, cpus):
     key_list = list(dt.keys())
     comb = list(combinations(range(len(dt)), 2))
 
-    inputs_ct = [(dt[key_list[i]],dt[key_list[j]]) for (i,j) in comb]
-    with Pool() as p:
+    inputs_ct = [(dt[key_list[i]], dt[key_list[j]]) for (i,j) in comb]
+
+    with Pool(cpus) as p:
         list_dist = p.starmap(CalculateDist, inputs_ct)
 
     dist = np.zeros(shape=(len(dt),len(dt)))
-    idx =0 
+    idx = 0
     for (i,j) in comb:
         dist[j,i] = list_dist[idx]
         dist[i,j] = dist[j,i]
         idx += 1
+
     np.fill_diagonal(dist, 0)
     dm = DistanceMatrix(dist,key_list) 
-    return dm
+    return(dm)
 
+############################################
+#  convert distance matrix to PcoA result  #
+############################################
 
-if __name__ == '__main__':
+def dist2PcoA(dist):
+    from skbio.stats.ordination import pcoa
+    ordination_result = pcoa(dist)
+    return ordination_result
 
-    import logging, time
-    from argparse import ArgumentParser
-    parser = ArgumentParser(description='Compute pairwise metagenome distance for SARS-CoV-2 samples')
-    parser.add_argument('-f', '--file', help='file that lists the path to sorted bam files', required=True, dest='file', metavar='')
-    parser.add_argument('-q', '--qual', help='Only reads with mapping quality equal to or greater than this value will be counted (0 by default).', required=False, default=0, dest='baseq', metavar='', type=float)
-    parser.add_argument('-c', '--cov', help='Only samples with reads mapped to equal to or greater than this fraction of the genome will be used for PcoA analysis (0.5 by default).', required=False, default=0.5, dest='required_coverage', metavar='', type=float)
-    parser.add_argument('-v', '--tsv', help='Option to use a 5 column tab delimited file containing nucleotide mutations from lineages of interest to be added to analysis', default="", required=False, dest='tsv_file', metavar='')
-    parser.add_argument('-r', '--ref', help='input reference file', required=False, default="data/NC_045512.2.fasta", dest='refpath', metavar='')
-    parser.add_argument('-t', '--threads', help='number of threads used for computing', required=False, default=cpu_count(), dest='cpus', metavar='', type=int)
-    parser.add_argument('-o', '--out', help='output folder name', required=True, dest='outpath', metavar='')
-    args = parser.parse_args()
+####################################
+###  main function for cov-dist  ###
+####################################
 
-    # write log file
+CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
+@click.group(chain=True, context_settings=CONTEXT_SETTINGS)
+def cli():
+    global logger
     logger = logging.getLogger(__name__)
     logger.setLevel(level=logging.INFO)
     formatter = logging.Formatter('%(asctime)s : %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
@@ -270,22 +316,76 @@ if __name__ == '__main__':
     logger.addHandler(stream_handler)
     stream_handler.setFormatter(formatter)
 
-    if not os.path.exists(args.outpath):
-        os.mkdir(args.outpath)
+@cli.command()
+@click.option('-p', '--prefix_list', required=True, type=click.Path(exists=True), help='A file that lists the prefix for vcf and corresponidng depth files.')
+@click.option('-r', '--ref', 'refpath', required=False, default=os.path.join(os.path.abspath(os.path.dirname( __file__ )), "data", "NC_045512.2.fasta"), type=click.Path(exists=True), help='Input reference file. [default: data/NC_045512.2.fasta]')
+@click.option('-c', '--cov', 'required_coverage', required=False, default=0.5, type=float, help='Only samples with reads mapped to equal to or greater than this fraction of the genome will be used for PcoA analysis [default: 0.5].')
+@click.option('-d', '--depth', 'cov_depth_cutoff', required=False, default=10, type=int, help='Depth cutoff to include positions when calculating coverage [default: 10].')
+@click.option('-t', '--threads', 'cpus', required=False, default=cpu_count(), type=int, help='Number of threads used for computing [default: all available cpus].')
+# @click.option('-v', '--voc_list', 'tsv_file', required=False, default="", help='Option to use a 5 column tab delimited file containing nucleotide mutations from lineages of interest to be added to analysis')
+@click.option('-o', '--out', 'outpath', required=True, help='Output folder name')
+def dist(prefix_list, refpath, cov_depth_cutoff, required_coverage, cpus, outpath):
+    """Compute pairwise metagenome distance for SARS-CoV-2 samples."""
+    if not os.path.exists(outpath):
+        os.mkdir(outpath)
     else:
         logger.warning('Outpath already exists and will be overwritten!')
 
-    logger.info('Creating count table')
-    ctd = file2CountTabDict(args.file, args.refpath,args.baseq,args.required_coverage,args.cpus)
-    dt_merged = tsvmergetoctd(ctd, args.tsv_file)
+    logger.info('Creating frequency table')
+    freq_tab_dict = vcf2FreqTabDict(prefix_list, refpath, cov_depth_cutoff, required_coverage, cpus)
+    global RefTableFreq
+    RefTableFreq = ref2FreqTable(refpath)
 
     logger.info('Caculating dissimilarity distance')
-    dist = dt2dist(dt_merged,args.cpus)
-    dist.write("{}/distance.txt".format(args.outpath))
+    dist = dt2dist(freq_tab_dict, cpus)
+    dist.write("{}/distance.txt".format(outpath))
+    
+    logger.info('Calculating distances is done!')
+
+@cli.command()
+@click.option('-d', '--distance_file', type=click.Path(exists=True), required=True, help='Distance file obtained from cov-dist "dist" command.')
+@click.option('-m', '--meta', type=click.Path(exists=True), required=True, help='Meta data for samples.')
+@click.option('-c', '--column', type=str, required=True, help='The column name in the meta data to color the samples.')
+@click.option('-o', '--out', 'outpath', required=True, help='Output folder name')
+def plot(distance_file, meta, column, outpath):
+    """Perform ordination analysis and visualize results."""
+    import pandas as pd
+    import plotly.express as px
+
+    if not os.path.exists(outpath):
+        os.mkdir(outpath)
 
     logger.info('Obtaining ordination')
+    dist = pd.read_csv(distance_file, sep="\t", header=0, index_col=0)
     ordination_result = dist2PcoA(dist)
-    ordination_result.write("{}/ordination_result.txt".format(args.outpath))
+    ordination_result.write("{}/ordination_result.txt".format(outpath))
 
-    logger.info('Done!')
+    logger.info('Performing ordination analysis is done!')
 
+    logger.info('Plotting')
+    metadata = pd.read_csv(meta, sep="\t", header=0)
+    if "sample" not in metadata.columns:
+        logger.error('Column "sample" is not in meta data. Please assign a column to match the columns in distance matrix.')
+    if column not in metadata.columns:
+        logger.error('Column "{}" is not in meta data. Please check!'.format(column))
+
+    sample_names = list(dist.index)
+    if len(sample_names) >= 3:
+        dt = ordination_result.samples.loc[:,['PC1', 'PC2', 'PC3']]
+        dt['sample'] = sample_names
+        plot_dt = dt.join(metadata.set_index('sample'), on='sample')
+        fig = px.scatter_3d(plot_dt, x='PC1', y='PC2', z='PC3', color=column)
+        fig.write_html("{}/pcoa_plot.html".format(outpath))
+    elif len(sample_names) == 2:
+        dt = ordination_result.samples.loc[:,['PC1', 'PC2']]
+        dt['sample'] = sample_names
+        plot_dt = dt.join(metadata.set_index('sample'), on='sample')
+        fig = px.scatter(plot_dt, x='PC1', y='PC2', color=column)
+        fig.write_html("{}/pcoa_plot.html".format(outpath))
+    else:
+        logger.warning('Only one sample is found. No plot is generated.')
+    
+    logger.info('Plotting is done!')
+
+if __name__ == '__main__':
+    cli()
