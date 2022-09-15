@@ -264,9 +264,9 @@ def vcf2FreqTabDict(prefix_list, refpath, cov_depth_cutoff, required_coverage, c
             dt[item[0]]= item[1]
     return dt
 
-##################################################
-#  check the input files and compute the FreqTab #
-##################################################
+###############################################
+#  construct distance matrix between samples  #
+###############################################
 
 def dt2dist(dt, cpus):
     from skbio import DistanceMatrix
@@ -290,15 +290,14 @@ def dt2dist(dt, cpus):
     dm = DistanceMatrix(dist,key_list) 
     return(dm)
 
-###############################################
-#  construct distance matrix between samples  #
-###############################################
+############################################
+#  convert distance matrix to PcoA result  #
+############################################
 
 def dist2PcoA(dist):
     from skbio.stats.ordination import pcoa
     ordination_result = pcoa(dist)
     return ordination_result
-
 
 ####################################
 ###  main function for cov-dist  ###
