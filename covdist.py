@@ -195,7 +195,7 @@ def vcf2FreqTable(prefix, refpath, cov_depth_cutoff, required_coverage):
     # check depth file
     depth_abf = check_path_existence(prefix+'.depth')
     if not depth_abf:
-        logger.warning('{} is not found. Default to set all position depths equal to one.'.format(depth_abf))
+        logger.warning('{} is not found. Default to set all position depths are valid.'.format(depth_abf))
 
     prefix = os.path.basename(vcf_abf).replace(".vcf", "")
     TableFreq = FreqTab(pos_dict = OrderedDict())
