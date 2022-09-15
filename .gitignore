@@ -1,0 +1,5 @@
+test_min_cov.sh
+test_plotly.ipynb
+data/test_old/
+data/test/*.bam
+data/test/*.bam.bai
