@@ -187,6 +187,9 @@ def ref2FreqTable(refpath):
 ##########################################
 
 def vcf2FreqTable(prefix, refpath, cov_depth_cutoff, required_coverage):
+    
+    prefix_base = os.path.basename(prefix)
+
     # check vcf file
     vcf_abf = check_path_existence(prefix+'.vcf')
     if not vcf_abf:
@@ -194,16 +197,24 @@ def vcf2FreqTable(prefix, refpath, cov_depth_cutoff, required_coverage):
 
     # check depth file
     depth_abf = check_path_existence(prefix+'.depth')
+
     if not depth_abf:
         logger.warning('{} is not found. Default to set all position depths are valid.'.format(depth_abf))
-
-    prefix = os.path.basename(vcf_abf).replace(".vcf", "")
-    TableFreq = FreqTab(pos_dict = OrderedDict())
     
+    TableFreq = FreqTab(pos_dict = OrderedDict())
     contigs = initialize_contigs(refpath)
-
     for contig_id in sorted(list(contigs.keys())):
         contig = contigs[contig_id]
+
+        if depth_abf:
+            # if depth path is provided, filter positions be depth
+            pos_depth_dict = depth2Dict(depth_abf)
+            TableFreq.filter_pos(pos_depth_dict, depth_cutoff=0) # this can be modified
+            coverage = calculate_coverage(pos_depth_dict, contig, cov_depth_cutoff)
+            if coverage < required_coverage:
+                logger.warning('{0} coverage ({1}%) is less than {2}% genome coverage and it will be removed from analysis!'.format(vcf_abf, coverage*100, required_coverage*100))
+                return None
+
         vcf_reader = vcf.Reader(open(vcf_abf, 'r'))
         for record in vcf_reader:
             if len(record.FILTER) >= 1 and record.FILTER[0] == 'AmpliconRemoval':
@@ -229,20 +240,10 @@ def vcf2FreqTable(prefix, refpath, cov_depth_cutoff, required_coverage):
                     ref_pos = record.POS,
                     ref_allele = record.REF,
                     freq_vec = freq_vector)
-            key = pos_freq.ref_id + ":" + str(pos_freq.ref_pos)
+                key = pos_freq.ref_id + ":" + str(pos_freq.ref_pos)
+                TableFreq[key] = pos_freq
 
-            TableFreq[key] = pos_freq
-        
-        if depth_abf:
-            # if depth path is provided, filter positions be depth
-            pos_depth_dict = depth2Dict(depth_abf)
-            TableFreq.filter_pos(pos_depth_dict, depth_cutoff=0)
-
-            coverage = calculate_coverage(pos_depth_dict, contig, cov_depth_cutoff)
-            if coverage < required_coverage:
-                logger.warning('{0} coverage ({1}%) is less than {2}% genome coverage and it will be removed from analysis!'.format(vcf_abf, coverage*100, required_coverage*100))
-
-    return (prefix, TableFreq)
+    return (prefix_base, TableFreq)
 
 ###############################################
 #  parse vcf files to a dict of freq tables   #
@@ -304,7 +305,7 @@ def dist2PcoA(dist):
 ####################################
 
 CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
-@click.group(chain=True, context_settings=CONTEXT_SETTINGS)
+@click.group(context_settings=CONTEXT_SETTINGS)
 def cli():
     global logger
     logger = logging.getLogger(__name__)
@@ -355,12 +356,10 @@ def plot(distance_file, meta, column, outpath):
     if not os.path.exists(outpath):
         os.mkdir(outpath)
 
-    logger.info('Obtaining ordination')
+    logger.info('Performing ordination analysis')
     dist = pd.read_csv(distance_file, sep="\t", header=0, index_col=0)
     ordination_result = dist2PcoA(dist)
     ordination_result.write("{}/ordination_result.txt".format(outpath))
-
-    logger.info('Performing ordination analysis is done!')
 
     logger.info('Plotting')
     metadata = pd.read_csv(meta, sep="\t", header=0)

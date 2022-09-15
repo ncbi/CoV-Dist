@@ -22,11 +22,10 @@ conda activate cov-dist
 ```
 
 
-
 ## Tutorial
 
 ```
-Usage: covdist.py [OPTIONS] COMMAND1 [ARGS]... [COMMAND2 [ARGS]...]...
+Usage: covdist.py [OPTIONS] COMMAND [ARGS]...
 
 Options:
   -h, --help  Show this message and exit.
