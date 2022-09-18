@@ -1,5 +1,7 @@
 # CoV-Dist 
 
+![CoV-Dist ](image/covdist.svg)
+
 ## Overview
 A python script to measure the dissimilarity distance between SARS-CoV-2 metagenome samples.
 
