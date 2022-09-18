@@ -1,14 +1,16 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import sys, os
-import logging, vcf, click
-import Bio.SeqIO, numpy as np
+import sys, os, datetime, logging, vcf, click
+import Bio.SeqIO
+import numpy as np
 from multiprocessing import Pool, cpu_count
 from functools import partial
 from itertools import combinations
 from collections import OrderedDict
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objs as go
 
 std_vec = {
         "A":[1.0,0.0,0.0,0.0],
@@ -118,26 +120,7 @@ def thetayc(vec1, vec2):
         else:
             return 1-dotsum/(dist-dotsum)
 
-# def round_vec(vec):
-#     return [round(i,3) for i in vec]
-
 def CalculateDist(freq_table1, freq_table2):
-    ### debug ###
-    # with open("test1", "w") as g:
-    #     for key in RefTableFreq:
-    #         if key in freq_table1:
-    #             vec1 = round_vec(freq_table1[key].freq_vec)
-    #         else:
-    #             vec1 = round_vec(RefTableFreq[key].freq_vec)
-    #         if key in freq_table2:
-    #             vec2 = round_vec(freq_table2[key].freq_vec)
-    #         else:
-    #             vec2 = round_vec(RefTableFreq[key].freq_vec)
-    #         val = thetayc(vec1, vec2)
-    #         v1 = "\t".join(list(map(str, vec1)))
-    #         v2 = "\t".join(list(map(str, vec2)))
-    #         g.write(str(key.split(":")[1])+"\t"+v1+"\t"+v2+"\t"+str(val)+"\n")
-
     sumval = 0
     key_inter = set(freq_table1).intersection(set(freq_table2))
     for key in key_inter:
@@ -186,20 +169,20 @@ def ref2FreqTable(refpath):
 #  read vcf file and covert to FreqTab   #
 ##########################################
 
-def vcf2FreqTable(prefix, refpath, cov_depth_cutoff, required_coverage):
+def vcf2FreqTable(prefix, refpath, cov_depth_cutoff, required_coverage, mode="normal"):
     
     prefix_base = os.path.basename(prefix)
 
     # check vcf file
     vcf_abf = check_path_existence(prefix+'.vcf')
     if not vcf_abf:
-        sys.exit("File: {} doesn't exist. Please check!".format(vcf_abf))
+        raise FileNotFoundError("Vcf file: {} doesn't exist! Terminate program.".format(prefix+'.vcf'))
 
     # check depth file
     depth_abf = check_path_existence(prefix+'.depth')
 
-    if not depth_abf:
-        logger.warning('{} is not found. Default to set all position depths are valid.'.format(depth_abf))
+    if not depth_abf and mode == "normal":
+        logger.warning('Depth file: {} is not found. Default to set all position depths are valid.'.format(prefix+'.depth'))
     
     TableFreq = FreqTab(pos_dict = OrderedDict())
     contigs = initialize_contigs(refpath)
@@ -249,16 +232,15 @@ def vcf2FreqTable(prefix, refpath, cov_depth_cutoff, required_coverage):
 #  parse vcf files to a dict of freq tables   #
 ###############################################
 
-def vcf2FreqTabDict(prefix_list, refpath, cov_depth_cutoff, required_coverage, cpus):
+def vcf2FreqTabDict(prefixlist, refpath, cov_depth_cutoff, required_coverage, cpus, mode="normal"):
     dt = OrderedDict()
-    prefix_abf = check_path_existence(prefix_list)
-    if prefix_abf:
-        prefixlist = [line.strip() for line in open(prefix_abf)]
-    else:
-        sys.exit("File: {} doesn't exist. Please check!".format(prefix_abf))
     
     with Pool(cpus) as p:
-        list_dt = p.map(partial(vcf2FreqTable, refpath=refpath, cov_depth_cutoff=cov_depth_cutoff, required_coverage=required_coverage), prefixlist)
+        try:
+            list_dt = p.map(partial(vcf2FreqTable, refpath=refpath, cov_depth_cutoff=cov_depth_cutoff, required_coverage=required_coverage, mode=mode), prefixlist)
+        except FileNotFoundError as e:
+            logger.error(e)
+            sys.exit()
 
     for item in list_dt:
         if item:
@@ -277,8 +259,8 @@ def dt2dist(dt, cpus):
 
     inputs_ct = [(dt[key_list[i]], dt[key_list[j]]) for (i,j) in comb]
 
-    with Pool(cpus) as p:
-        list_dist = p.starmap(CalculateDist, inputs_ct)
+    with Pool(cpus) as p1:
+        list_dist = p1.starmap(CalculateDist, inputs_ct)
 
     dist = np.zeros(shape=(len(dt),len(dt)))
     idx = 0
@@ -323,9 +305,9 @@ def cli():
 @click.option('-c', '--cov', 'required_coverage', required=False, default=0.5, type=float, help='Only samples with reads mapped to equal to or greater than this fraction of the genome will be used for PcoA analysis [default: 0.5].')
 @click.option('-d', '--depth', 'cov_depth_cutoff', required=False, default=10, type=int, help='Depth cutoff to include positions when calculating coverage [default: 10].')
 @click.option('-t', '--threads', 'cpus', required=False, default=cpu_count(), type=int, help='Number of threads used for computing [default: all available cpus].')
-# @click.option('-v', '--voc_list', 'tsv_file', required=False, default="", help='Option to use a 5 column tab delimited file containing nucleotide mutations from lineages of interest to be added to analysis')
+@click.option('-v', '--voc', 'voc_dir', required=False, default=None, help='voc folder to store vcf files (default is None).')
 @click.option('-o', '--out', 'outpath', required=True, help='Output folder name')
-def dist(prefix_list, refpath, cov_depth_cutoff, required_coverage, cpus, outpath):
+def dist(prefix_list, refpath, cov_depth_cutoff, required_coverage, cpus, voc_dir, outpath):
     """Compute pairwise metagenome distance for SARS-CoV-2 samples."""
     if not os.path.exists(outpath):
         os.mkdir(outpath)
@@ -333,56 +315,467 @@ def dist(prefix_list, refpath, cov_depth_cutoff, required_coverage, cpus, outpat
         logger.warning('Outpath already exists and will be overwritten!')
 
     logger.info('Creating frequency table')
-    freq_tab_dict = vcf2FreqTabDict(prefix_list, refpath, cov_depth_cutoff, required_coverage, cpus)
+
+    prefixlist = [line.strip() for line in open(prefix_list)]
+
+    freq_tab_dict = vcf2FreqTabDict(prefixlist, refpath, cov_depth_cutoff, required_coverage, cpus, mode="normal")
     global RefTableFreq
     RefTableFreq = ref2FreqTable(refpath)
 
-    logger.info('Caculating dissimilarity distance')
-    dist = dt2dist(freq_tab_dict, cpus)
+    if not voc_dir is None:
+        logger.info('Creating voc frequency table')
+        voc_prefixlist = []
+        for file in os.listdir(voc_dir):
+            voc_prefix = os.path.join(voc_dir, file).replace(".vcf", "")
+            voc_prefixlist.append(voc_prefix)
+        voc_freq_tab_dict = vcf2FreqTabDict(voc_prefixlist, refpath, cov_depth_cutoff, required_coverage, cpus, mode="voc")
+        final_freq_tab_dict = {**freq_tab_dict, **voc_freq_tab_dict}
+    else:
+        final_freq_tab_dict = freq_tab_dict
+
+    logger.info('Calculating dissimilarity distance')
+    dist = dt2dist(final_freq_tab_dict, cpus)
     dist.write("{}/distance.txt".format(outpath))
     
     logger.info('Calculating distances is done!')
 
+###########################
+# plot essential funtions #
+###########################
+my_symbols = ['diamond', 'x', 'circle', 'square', 'cross', 'diamond-open', 'circle-open', 'square-open']
+
+def validate_date_format(date_text):
+    try:
+        datetime.datetime.strptime(date_text, '%Y-%m-%d')
+    except ValueError:
+        raise ValueError('Incorrect data format for "{}", should be YYYY-MM-DD!'.format(date_text))
+
+def generate_hovertemplate(df_columns, method="PCoA"):
+    if method == "PCoA":
+        pc_name = "PC"
+    elif method == "MDS":
+        pc_name = "Dimension"
+    elif method == "TSNE":
+        pc_name = "t-SNE"
+
+    txt_list = ["sample: %{customdata[0]}",
+            "collection_date: %{customdata[1]}",
+            "collection_site: %{customdata[2]}",
+            pc_name+"1: %{customdata[3]}",
+            pc_name+"2: %{customdata[4]}",
+            pc_name+"3: %{customdata[5]}"
+            ]
+    for index, col in enumerate(df_columns):
+        if col not in ["sample", "collection_date", "collection_site", "PC1", "PC2", "PC3"]:
+            txt_list += [str(col)+": %{customdata["+str(index)+"]}"]
+    
+    return("<br>".join(txt_list))
+
+def check_meta_column(column, target_columns):
+    if column !="default" and column not in target_columns:
+        logger.error('Column "{}" is not in meta data. Please check!'.format(column))
+        sys.exit()
+
+def other_col_plot(df, column, analysis, intersect_len, outpath, axis_names, hovertmp, voc=False, mode="3d"):
+    
+    fig = go.Figure()
+    
+    if mode == "3d":
+        if voc == False:
+            plot3d = px.scatter_3d(df, x='PC1', y='PC2', z='PC3', color=column, color_continuous_scale="Viridis", hover_data=list(df.columns))
+            fig.add_traces(list(plot3d.select_traces()))
+        else:
+            df1 = df[df['voc']=='no']
+            plot3d = px.scatter_3d(df1, x='PC1', y='PC2', z='PC3', color=column, color_continuous_scale="Viridis", hover_data=list(df1.columns))
+            fig.add_traces(list(plot3d.select_traces()))
+
+            df2 = df[df['voc']=='yes']
+            unique_type = df2['type'].unique()
+            for index, typ in enumerate(unique_type):
+                df_typ = df2[df2['type'] == typ]
+                legendgroup=None
+                legendgrouptitle_text=None
+                if index==0:
+                    legendgroup="clade"
+                    legendgrouptitle_text="<br>clade"
+                trace = go.Scatter3d(x=df_typ['PC1'], y=df_typ['PC2'], z=df_typ['PC3'], 
+                                mode='markers',
+                                marker_size=6,
+                                marker_color="#656565",
+                                marker_showscale=False,
+                                marker_symbol=[my_symbols[index%len(my_symbols)]]*df_typ.shape[0],
+                                name=typ, 
+                                hoverinfo='skip', # no hover text
+                                showlegend=True,
+                                customdata=df2,
+                                hovertemplate=hovertmp,
+                                legendgroup=legendgroup,
+                                legendgrouptitle_text=legendgrouptitle_text
+                )
+                fig.add_trace(trace)
+
+        fig.update_layout(title="CoV-Dist {0} {1} with {2} samples".format(mode, analysis, intersect_len), 
+                    scene = dict(
+                    xaxis_title=axis_names[0],
+                    yaxis_title=axis_names[1],
+                    zaxis_title=axis_names[2]))
+
+    elif mode == "2d":
+        if voc == False:
+            plot2d = px.scatter(df, x='PC1', y='PC2', color=column, color_continuous_scale="Viridis", hover_data=list(df.columns))
+            fig.add_traces(list(plot2d.select_traces()))
+        else:
+            df1 = df[df['voc']=='no']
+            plot2d = px.scatter(df1, x='PC1', y='PC2', color=column, color_continuous_scale="Viridis", hover_data=list(df1.columns))
+            fig.add_traces(list(plot2d.select_traces()))
+
+            df2 = df[df['voc']=='yes']
+            unique_type = df2['type'].unique()
+            for index, typ in enumerate(unique_type):
+                df_typ = df2[df2['type'] == typ]
+                legendgroup=None
+                legendgrouptitle_text=None
+                if index==0:
+                    legendgroup="clade"
+                    legendgrouptitle_text="<br>clade"
+                trace = go.Scatter(x=df_typ['PC1'], y=df_typ['PC2'], 
+                                mode='markers',
+                                marker_size=6,
+                                marker_color="#656565",
+                                marker_showscale=False,
+                                marker_symbol=[my_symbols[index%len(my_symbols)]]*df_typ.shape[0],
+                                name=typ, 
+                                customdata=df2,
+                                hovertemplate=hovertmp,
+                                showlegend=True,
+                                legendgroup=legendgroup,
+                                legendgrouptitle_text=legendgrouptitle_text
+                )
+                fig.add_trace(trace)
+
+        fig.update_layout(title="CoV-Dist {0} {1} with {2} samples".format(mode, analysis, intersect_len), 
+                    xaxis_title=axis_names[0],
+                    yaxis_title=axis_names[1])
+    
+    fig.update_layout(legend_title_text=column)
+    
+    fig.update_layout(legend=dict(
+        orientation="v",
+        yanchor="top",
+        y=1,
+        xanchor="right",
+        x=-0.1,
+        tracegroupgap=3
+    ))
+
+    fig.write_html("{0}/{1}_plot_{2}.html".format(outpath, analysis.lower(), mode))
+
+def default_plot(df, analysis, intersect_len, outpath, axis_names, hovertmp, voc=False, mode="3d"):
+    
+    if voc == False:
+        df_non_voc = df[:]
+    else:
+        df_non_voc = df[df['voc']=='no'][:]
+
+    df_non_voc['collection_date']=pd.to_datetime(df_non_voc['collection_date']).dt.date
+    df_non_voc = df_non_voc.sort_values(by='collection_date')
+    unique_date = df_non_voc['collection_date'].unique()
+    date_to_val = df_non_voc['collection_date'].map(pd.Series(data=np.arange(len(unique_date)), index=unique_date).to_dict())
+    df_non_voc['date2val'] = date_to_val
+
+    step = max(1, int((max(date_to_val)-min(date_to_val))/10))
+    tickvals = [k for k in range(min(date_to_val), max(date_to_val), step)]
+    dlist = list(date_to_val)
+    index_tickvals = [dlist.index(tv) for tv in tickvals]
+    ticktext = [df_non_voc['collection_date'][id].strftime("%Y-%m-%d") for id in index_tickvals]
+    unique_loc = df_non_voc['collection_site'].unique()
+    df = df.join(df_non_voc[['sample', 'date2val']].set_index('sample'), on='sample', how='left')
+
+    fig = go.Figure()
+    if mode=="3d":
+        if voc == False:
+            for loc in unique_loc:
+                df_loc = df[df['collection_site'] == loc]
+                trace = go.Scatter3d(x=df_loc['PC1'], y=df_loc['PC2'], z=df_loc['PC3'], 
+                                mode='markers',
+                                marker_size=6,
+                                marker_color=df_loc['date2val'],
+                                marker_colorscale='Plasma',
+                                marker_showscale=False,
+                                name=loc, 
+                                showlegend=True)
+                fig.add_trace(trace)
+        else:
+            df1 = df[df['voc']=='no']
+            for index, loc in enumerate(unique_loc):
+                df_loc = df1[df1['collection_site'] == loc]
+                trace = go.Scatter3d(x=df_loc['PC1'], y=df_loc['PC2'], z=df_loc['PC3'], 
+                                mode='markers',
+                                marker_size=6,
+                                marker_color=df_loc['date2val'],
+                                marker_colorscale='Plasma',
+                                marker_showscale=False,
+                                name=loc,
+                                showlegend=True)
+                fig.add_trace(trace)
+
+            df2 = df[df['voc']=='yes']
+            unique_type = df2['type'].unique()
+            for index, typ in enumerate(unique_type):
+                df_typ = df2[df2['type'] == typ]
+                legendgroup=None
+                legendgrouptitle_text=None
+                if index==0:
+                    legendgroup="clade"
+                    legendgrouptitle_text="<br>clade"
+                trace = go.Scatter3d(x=df_typ['PC1'], y=df_typ['PC2'], z=df_typ['PC3'], 
+                                mode='markers',
+                                marker_size=6,
+                                marker_color="#656565",
+                                marker_showscale=False,
+                                marker_symbol=[my_symbols[index % len(my_symbols)]]*df_typ.shape[0],
+                                name=typ, 
+                                hoverinfo='skip', # no hover text
+                                showlegend=True,
+                                legendgroup=legendgroup,
+                                legendgrouptitle_text=legendgrouptitle_text)
+
+                fig.add_trace(trace)
+        
+        df = df.drop('date2val', axis=1)
+
+        fig.add_trace(go.Scatter3d(x=df['PC1'], y=df['PC2'], z=df['PC3'], 
+                        mode='markers',
+                        marker_color=date_to_val,
+                        marker_colorscale='Plasma',
+                        marker_showscale=True,
+                        marker_size=6,
+                        name="",
+                        opacity=0,
+                        showlegend=False,
+                        marker_colorbar=dict(tickvals=tickvals, ticktext=ticktext, title_text='collection_date'),
+                        customdata=df,
+                        hoverlabel = dict(namelength=0),
+                        hovertemplate=hovertmp))
+
+        fig.update_layout(title="CoV-Dist {0} {1} with {2} samples".format(mode, analysis, intersect_len), 
+            scene = dict(
+            xaxis_title=axis_names[0],
+            yaxis_title=axis_names[1],
+            zaxis_title=axis_names[2]))
+    
+    elif mode=="2d":
+        if voc == False:
+            for loc in unique_loc:
+                df_loc = df[df['collection_site'] == loc]
+                # add collection_site trace
+                trace = go.Scatter(x=df_loc['PC1'], y=df_loc['PC2'], 
+                                mode='markers',
+                                marker_size=6,
+                                marker_color=df_loc['date2val'],
+                                marker_colorscale='Plasma',
+                                marker_showscale=False,
+                                name=loc, 
+                                showlegend=True)
+                fig.add_trace(trace)
+        else:
+            df1 = df[df['voc']=='no']
+            for index, loc in enumerate(unique_loc):
+                df_loc = df1[df1['collection_site'] == loc]
+                trace = go.Scatter(x=df_loc['PC1'], y=df_loc['PC2'], 
+                                mode='markers',
+                                marker_size=6,
+                                marker_color=df_loc['date2val'],
+                                marker_colorscale='Plasma',
+                                marker_showscale=False,
+                                name=loc,
+                                showlegend=True)
+                fig.add_trace(trace)
+
+            df2 = df[df['voc']=='yes']
+            unique_type = df2['type'].unique()
+            for index, typ in enumerate(unique_type):
+                df_typ = df2[df2['type'] == typ]
+                legendgroup=None
+                legendgrouptitle_text=None
+                if index==0:
+                    legendgroup="clade"
+                    legendgrouptitle_text="<br>clade"
+                trace = go.Scatter(x=df_typ['PC1'], y=df_typ['PC2'], 
+                                mode='markers',
+                                marker_size=6,
+                                marker_color="#656565",
+                                marker_showscale=False,
+                                marker_symbol=[my_symbols[index % len(my_symbols)]]*df_typ.shape[0],
+                                name=typ, 
+                                hoverinfo='skip', # no hover text
+                                showlegend=True,
+                                legendgroup=legendgroup,
+                                legendgrouptitle_text=legendgrouptitle_text)
+
+                fig.add_trace(trace)
+
+        df = df.drop('date2val', axis=1)
+        fig.add_trace(go.Scatter(x=df['PC1'], y=df['PC2'], 
+                        mode='markers',
+                        marker_color=date_to_val,
+                        marker_colorscale='Plasma',
+                        marker_showscale=True,
+                        marker_size=6,
+                        name="",
+                        opacity=0,
+                        marker_colorbar=dict(tickvals=tickvals, ticktext=ticktext, title_text='collection_date'),
+                        customdata=df,
+                        hoverlabel = dict(namelength=0),
+                        hovertemplate=hovertmp))
+        
+        fig.update_layout(title="CoV-Dist {0} {1} with {2} samples".format(mode, analysis, intersect_len), 
+                    xaxis_title=axis_names[0],
+                    yaxis_title=axis_names[1])
+
+    # both for 3d and 2d
+    fig.update_layout(legend_title_text="collection_site")
+
+    fig.update_layout(legend=dict(
+        orientation="v",
+        yanchor="top",
+        y=1,
+        xanchor="right",
+        x=-0.1,
+        tracegroupgap=3
+    ))
+
+    fig.write_html("{0}/{1}_plot_{2}.html".format(outpath, analysis.lower(), mode))
+
 @cli.command()
 @click.option('-d', '--distance_file', type=click.Path(exists=True), required=True, help='Distance file obtained from cov-dist "dist" command.')
-@click.option('-m', '--meta', type=click.Path(exists=True), required=True, help='Meta data for samples.')
-@click.option('-c', '--column', type=str, required=True, help='The column name in the meta data to color the samples.')
+@click.option('-m', '--meta', type=click.Path(exists=True), required=True, help='Meta data for samples. Must have at least three columns - "sample", "collection_date" and "collection_site".')
+@click.option('-c', '--column', type=str, default="default", required=False, help='The column name in the meta data to color the samples. Default collection_date and collection_site are used to plot figures.')
+@click.option('-a', '--analysis', type=click.Choice(['PCoA', 'MDS', 'TSNE'], case_sensitive=False), required=False, default="PCoA", help='Method to show samples. Can be choosen from PCoA (default), MDS, TSNE.')
+@click.option('-v', '--voc_meta', type=click.Path(exists=True), required=False, default=None, help='Metadata for VOC.')
 @click.option('-o', '--out', 'outpath', required=True, help='Output folder name')
-def plot(distance_file, meta, column, outpath):
+def plot(distance_file, meta, column, analysis, voc_meta, outpath):
     """Perform ordination analysis and visualize results."""
-    import pandas as pd
-    import plotly.express as px
+
+    import warnings
+    warnings.simplefilter(action='ignore', category=FutureWarning)
+    warnings.simplefilter(action='ignore', category=RuntimeWarning)
 
     if not os.path.exists(outpath):
         os.mkdir(outpath)
 
-    logger.info('Performing ordination analysis')
+    logger.info('Performing {} ordination analysis'.format(analysis))
     dist = pd.read_csv(distance_file, sep="\t", header=0, index_col=0)
-    ordination_result = dist2PcoA(dist)
-    ordination_result.write("{}/ordination_result.txt".format(outpath))
+    sample_names = list(dist.index.astype('string'))
+    if len(sample_names) < 3:
+        logger.error('Less than 3 samples are found. No plot is generated.')
+        sys.exit()
 
-    logger.info('Plotting')
+    # read metadata
     metadata = pd.read_csv(meta, sep="\t", header=0)
-    if "sample" not in metadata.columns:
-        logger.error('Column "sample" is not in meta data. Please assign a column to match the columns in distance matrix.')
-    if column not in metadata.columns:
-        logger.error('Column "{}" is not in meta data. Please check!'.format(column))
+    # check sample column
+    check_meta_column("sample", metadata.columns)
 
-    sample_names = list(dist.index)
-    if len(sample_names) >= 3:
+    # check collection_date column
+    check_meta_column("collection_date", metadata.columns)
+    for date_str in metadata['collection_date']:
+        try:
+            validate_date_format(date_str)
+        except ValueError as e:
+            logger.error(e)
+            sys.exit()
+    # check collection_site column
+    check_meta_column("collection_site", metadata.columns)
+    # check user custom column
+    check_meta_column(column, metadata.columns)
+
+    if voc_meta is not None:
+        metadt_voc = pd.read_csv(voc_meta, sep="\t", header=0)
+        check_meta_column("sample", metadt_voc.columns)
+        check_meta_column("type", metadt_voc.columns)
+        metadata['voc']='no'
+        metadt_voc['voc']='yes'
+        merged_metadata = pd.concat([metadata, metadt_voc], ignore_index=True)
+        voc = True
+    else:
+        merged_metadata = metadata
+        voc = False
+
+    merged_metadata['sample'] = merged_metadata['sample'].astype('string')
+    merged_metadata['collection_site'] = merged_metadata['collection_site'].astype('string')
+    merged_metadata['collection_date'] = pd.to_datetime(merged_metadata['collection_date']).dt.date
+
+    # check if distance samples are in metadata
+    diff_samples = set(sample_names).difference(set(list(merged_metadata['sample'])))
+    diff_len = len(diff_samples)
+    if diff_len == 1:
+       logger.warning('One sample ({}) is not found in metadata.'.format(diff_samples[0]))
+    elif 1 < diff_len <= 10:
+        logger.warning('{0} samples ({1}) are not found in metadata.'.format(diff_len, ", ".join(list(diff_samples))))
+    elif diff_len > 10:
+        logger.warning('{0} samples ({1}) ... are not found in metadata.'.format(diff_len, ", ".join(list(diff_samples)[:10])))
+    
+    intersect_samples = set(sample_names).intersection(set(list(merged_metadata['sample'])))
+    intersect_len = len(intersect_samples)
+    if intersect_len == 0:
+        logger.error('No samples are not found in metadata.')
+        sys.exit()
+
+    ########
+    # PcoA #
+    ########
+    if analysis == "PCoA":
+        ordination_result = dist2PcoA(dist)
         dt = ordination_result.samples.loc[:,['PC1', 'PC2', 'PC3']]
         dt['sample'] = sample_names
-        plot_dt = dt.join(metadata.set_index('sample'), on='sample')
-        fig = px.scatter_3d(plot_dt, x='PC1', y='PC2', z='PC3', color=column)
-        fig.write_html("{}/pcoa_plot.html".format(outpath))
-    elif len(sample_names) == 2:
-        dt = ordination_result.samples.loc[:,['PC1', 'PC2']]
+        axis_names = ["PC" + str(index+1) + " ("+ '{:.2f}'.format(prop*100) +"%)" for index, prop in enumerate(ordination_result.proportion_explained[:3])]
+
+    #######
+    # MDS #
+    #######
+    elif analysis == "MDS":
+        from sklearn.manifold import MDS
+        mds = MDS(n_components=3, dissimilarity="precomputed")
+        mds_fit = mds.fit(dist)
+        dt = pd.DataFrame(mds_fit.embedding_, columns=['PC1', 'PC2', 'PC3'])
         dt['sample'] = sample_names
-        plot_dt = dt.join(metadata.set_index('sample'), on='sample')
-        fig = px.scatter(plot_dt, x='PC1', y='PC2', color=column)
-        fig.write_html("{}/pcoa_plot.html".format(outpath))
+        axis_names = ["Dimension 1", "Dimension 2", "Dimension 3"]
+
+    #########
+    # t-SNE #
+    #########
+    elif analysis == "TSNE":
+        from sklearn.manifold import TSNE
+        tsne = TSNE(n_components=3, metric="precomputed", learning_rate='auto')
+        tsne_fit = tsne.fit(dist)
+        dt = pd.DataFrame(tsne_fit.embedding_, columns=['PC1', 'PC2', 'PC3'])
+        dt['sample'] = sample_names
+        axis_names = ["t-SNE 1", "t-SNE 2", "t-SNE 3"]
+
+    # generate plot dataframe
+    df = dt.join(merged_metadata.set_index('sample'), on='sample', how='inner')
+    df.index = df.index.map(str) # this step is important
+    df.fillna('NA', inplace=True)
+
+    # reorder df
+    ess_cols = ['sample','collection_date','collection_site']
+    df = df[ess_cols + [i for i in df.columns if i not in ess_cols]]
+    # write out ordination_result
+    df.to_csv("{0}/{1}_ordination_result.txt".format(outpath, analysis), index=False, sep="\t")
+
+    logger.info('Plotting')
+    hovertmp = generate_hovertemplate(list(df.columns), method=analysis)
+    if column == "default":
+        # plot 3d
+        default_plot(df, analysis, intersect_len, outpath, axis_names, hovertmp, voc=voc, mode="3d")
+        # plot 2d
+        default_plot(df, analysis, intersect_len, outpath, axis_names, hovertmp, voc=voc, mode="2d")
     else:
-        logger.warning('Only one sample is found. No plot is generated.')
+        # others as column
+        # plot 3d
+        other_col_plot(df, column, analysis, intersect_len, outpath, axis_names, hovertmp, voc=voc, mode="3d")
+        # plot 2d
+        other_col_plot(df, column, analysis, intersect_len, outpath, axis_names, hovertmp, voc=voc, mode="2d")
     
     logger.info('Plotting is done!')
 
