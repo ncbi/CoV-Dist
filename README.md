@@ -171,8 +171,8 @@ data/test/testout
 ```
 
 * Calculated distance matrix: `distance.txt`. It could be used as input for other dimensionality reduction methods.
-* Output from the PCoA, MDS or t-SNE: `<PCoA|MDS|TSNE>ordination_result.txt`. It could be used as input for your preferred data visualization tool to plot the PcoA.
-* Plotly html with which user can interacte in the broswer and download a perferable snapshot as PNG: `<pcoa|mds|tsne>_plot_<3d|2d>.html`
+* Output from the PCoA, MDS or t-SNE: `<PCoA|MDS|TSNE>ordination_result.txt`. It could be used as input data for your preferred data visualization tool to plot the results.
+* Plotly html (including both 3d and 2d scatter plots) with which user can interacte in the broswer and download a perferable snapshot as PNG: `<pcoa|mds|tsne>_plot_<3d|2d>.html`
 
 ## Notes
 * If there is zero coverage for a position in the alignment, we assume the dissimilarity in that position is zero, which could lead to an underestimation of the distance between samples with low coverage.
