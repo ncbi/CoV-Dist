@@ -305,14 +305,14 @@ def cli():
 @click.option('-c', '--cov', 'required_coverage', required=False, default=0.5, type=float, help='Only samples with reads mapped to equal to or greater than this fraction of the genome will be used for PcoA analysis [default: 0.5].')
 @click.option('-d', '--depth', 'cov_depth_cutoff', required=False, default=10, type=int, help='Depth cutoff to include positions when calculating coverage [default: 10].')
 @click.option('-t', '--threads', 'cpus', required=False, default=cpu_count(), type=int, help='Number of threads used for computing [default: all available cpus].')
-@click.option('-v', '--voc', 'voc_dir', required=False, default=None, help='voc folder to store vcf files (default is None).')
+@click.option('-v', '--voc', 'voc_dir', required=False, default=None, help='VOC (Variant Of Concern) folder name containing VOC vcf files, no depth files are needed (default is None).')
 @click.option('-o', '--out', 'outpath', required=True, help='Output folder name')
 def dist(prefix_list, refpath, cov_depth_cutoff, required_coverage, cpus, voc_dir, outpath):
     """Compute pairwise metagenome distance for SARS-CoV-2 samples."""
     if not os.path.exists(outpath):
         os.mkdir(outpath)
     else:
-        logger.warning('Outpath already exists and will be overwritten!')
+        logger.warning('Outpath already exists and may be overwritten!')
 
     logger.info('Creating frequency table')
 
@@ -378,8 +378,9 @@ def check_meta_column(column, target_columns):
 
 def other_col_plot(df, column, analysis, intersect_len, outpath, axis_names, hovertmp, voc=False, mode="3d"):
     
-    fig = go.Figure()
+    df.fillna('NA', inplace=True) # to deal with unavailable value in hoverinfo
     
+    fig = go.Figure()
     if mode == "3d":
         if voc == False:
             plot3d = px.scatter_3d(df, x='PC1', y='PC2', z='PC3', color=column, color_continuous_scale="Viridis", hover_data=list(df.columns))
@@ -390,14 +391,14 @@ def other_col_plot(df, column, analysis, intersect_len, outpath, axis_names, hov
             fig.add_traces(list(plot3d.select_traces()))
 
             df2 = df[df['voc']=='yes']
-            unique_type = df2['type'].unique()
+            unique_type = df2['group'].unique()
             for index, typ in enumerate(unique_type):
-                df_typ = df2[df2['type'] == typ]
+                df_typ = df2[df2['group'] == typ]
                 legendgroup=None
                 legendgrouptitle_text=None
                 if index==0:
-                    legendgroup="clade"
-                    legendgrouptitle_text="<br>clade"
+                    legendgroup="group"
+                    legendgrouptitle_text="<br>group"
                 trace = go.Scatter3d(x=df_typ['PC1'], y=df_typ['PC2'], z=df_typ['PC3'], 
                                 mode='markers',
                                 marker_size=6,
@@ -430,14 +431,14 @@ def other_col_plot(df, column, analysis, intersect_len, outpath, axis_names, hov
             fig.add_traces(list(plot2d.select_traces()))
 
             df2 = df[df['voc']=='yes']
-            unique_type = df2['type'].unique()
+            unique_type = df2['group'].unique()
             for index, typ in enumerate(unique_type):
-                df_typ = df2[df2['type'] == typ]
+                df_typ = df2[df2['group'] == typ]
                 legendgroup=None
                 legendgrouptitle_text=None
                 if index==0:
-                    legendgroup="clade"
-                    legendgrouptitle_text="<br>clade"
+                    legendgroup="group"
+                    legendgrouptitle_text="<br>group"
                 trace = go.Scatter(x=df_typ['PC1'], y=df_typ['PC2'], 
                                 mode='markers',
                                 marker_size=6,
@@ -472,28 +473,24 @@ def other_col_plot(df, column, analysis, intersect_len, outpath, axis_names, hov
 
 def default_plot(df, analysis, intersect_len, outpath, axis_names, hovertmp, voc=False, mode="3d"):
     
-    if voc == False:
-        df_non_voc = df[:]
-    else:
-        df_non_voc = df[df['voc']=='no'][:]
-
-    df_non_voc['collection_date']=pd.to_datetime(df_non_voc['collection_date']).dt.date
-    df_non_voc = df_non_voc.sort_values(by='collection_date')
-    unique_date = df_non_voc['collection_date'].unique()
-    date_to_val = df_non_voc['collection_date'].map(pd.Series(data=np.arange(len(unique_date)), index=unique_date).to_dict())
-    df_non_voc['date2val'] = date_to_val
+    df['collection_date']=pd.to_datetime(df['collection_date']).dt.date
+    df = df.sort_values(by='collection_date')
+    unique_date = df['collection_date'].unique()
+    date_to_val = df['collection_date'].map(pd.Series(data=np.arange(len(unique_date)), index=unique_date).to_dict())
+    df['date2val'] = date_to_val
 
     step = max(1, int((max(date_to_val)-min(date_to_val))/10))
     tickvals = [k for k in range(min(date_to_val), max(date_to_val), step)]
     dlist = list(date_to_val)
     index_tickvals = [dlist.index(tv) for tv in tickvals]
-    ticktext = [df_non_voc['collection_date'][id].strftime("%Y-%m-%d") for id in index_tickvals]
-    unique_loc = df_non_voc['collection_site'].unique()
-    df = df.join(df_non_voc[['sample', 'date2val']].set_index('sample'), on='sample', how='left')
+    ticktext = [df['collection_date'][id].strftime("%Y-%m-%d") for id in index_tickvals]
+
+    df.fillna('NA', inplace=True) # to deal with unavailable value in hoverinfo
 
     fig = go.Figure()
     if mode=="3d":
         if voc == False:
+            unique_loc = df['collection_site'].unique()
             for loc in unique_loc:
                 df_loc = df[df['collection_site'] == loc]
                 trace = go.Scatter3d(x=df_loc['PC1'], y=df_loc['PC2'], z=df_loc['PC3'], 
@@ -502,11 +499,14 @@ def default_plot(df, analysis, intersect_len, outpath, axis_names, hovertmp, voc
                                 marker_color=df_loc['date2val'],
                                 marker_colorscale='Plasma',
                                 marker_showscale=False,
+                                marker_cmin = min(date_to_val),
+                                marker_cmax = max(date_to_val),
                                 name=loc, 
                                 showlegend=True)
                 fig.add_trace(trace)
         else:
             df1 = df[df['voc']=='no']
+            unique_loc = df1['collection_site'].unique()
             for index, loc in enumerate(unique_loc):
                 df_loc = df1[df1['collection_site'] == loc]
                 trace = go.Scatter3d(x=df_loc['PC1'], y=df_loc['PC2'], z=df_loc['PC3'], 
@@ -515,19 +515,21 @@ def default_plot(df, analysis, intersect_len, outpath, axis_names, hovertmp, voc
                                 marker_color=df_loc['date2val'],
                                 marker_colorscale='Plasma',
                                 marker_showscale=False,
+                                marker_cmin = min(date_to_val),
+                                marker_cmax = max(date_to_val),                                
                                 name=loc,
                                 showlegend=True)
                 fig.add_trace(trace)
 
             df2 = df[df['voc']=='yes']
-            unique_type = df2['type'].unique()
+            unique_type = df2['group'].unique()
             for index, typ in enumerate(unique_type):
-                df_typ = df2[df2['type'] == typ]
+                df_typ = df2[df2['group'] == typ]
                 legendgroup=None
                 legendgrouptitle_text=None
                 if index==0:
-                    legendgroup="clade"
-                    legendgrouptitle_text="<br>clade"
+                    legendgroup="group"
+                    legendgrouptitle_text="<br>group"
                 trace = go.Scatter3d(x=df_typ['PC1'], y=df_typ['PC2'], z=df_typ['PC3'], 
                                 mode='markers',
                                 marker_size=6,
@@ -550,7 +552,7 @@ def default_plot(df, analysis, intersect_len, outpath, axis_names, hovertmp, voc
                         marker_colorscale='Plasma',
                         marker_showscale=True,
                         marker_size=6,
-                        name="",
+                        name="collection_date",
                         opacity=0,
                         showlegend=False,
                         marker_colorbar=dict(tickvals=tickvals, ticktext=ticktext, title_text='collection_date'),
@@ -566,6 +568,7 @@ def default_plot(df, analysis, intersect_len, outpath, axis_names, hovertmp, voc
     
     elif mode=="2d":
         if voc == False:
+            unique_loc = df['collection_site'].unique()
             for loc in unique_loc:
                 df_loc = df[df['collection_site'] == loc]
                 # add collection_site trace
@@ -575,11 +578,14 @@ def default_plot(df, analysis, intersect_len, outpath, axis_names, hovertmp, voc
                                 marker_color=df_loc['date2val'],
                                 marker_colorscale='Plasma',
                                 marker_showscale=False,
+                                marker_cmin = min(date_to_val),
+                                marker_cmax = max(date_to_val),                                
                                 name=loc, 
                                 showlegend=True)
                 fig.add_trace(trace)
         else:
             df1 = df[df['voc']=='no']
+            unique_loc = df1['collection_site'].unique()
             for index, loc in enumerate(unique_loc):
                 df_loc = df1[df1['collection_site'] == loc]
                 trace = go.Scatter(x=df_loc['PC1'], y=df_loc['PC2'], 
@@ -588,19 +594,21 @@ def default_plot(df, analysis, intersect_len, outpath, axis_names, hovertmp, voc
                                 marker_color=df_loc['date2val'],
                                 marker_colorscale='Plasma',
                                 marker_showscale=False,
+                                marker_cmin = min(date_to_val),
+                                marker_cmax = max(date_to_val),                                
                                 name=loc,
                                 showlegend=True)
                 fig.add_trace(trace)
 
             df2 = df[df['voc']=='yes']
-            unique_type = df2['type'].unique()
+            unique_type = df2['group'].unique()
             for index, typ in enumerate(unique_type):
-                df_typ = df2[df2['type'] == typ]
+                df_typ = df2[df2['group'] == typ]
                 legendgroup=None
                 legendgrouptitle_text=None
                 if index==0:
-                    legendgroup="clade"
-                    legendgrouptitle_text="<br>clade"
+                    legendgroup="group"
+                    legendgrouptitle_text="<br>group"
                 trace = go.Scatter(x=df_typ['PC1'], y=df_typ['PC2'], 
                                 mode='markers',
                                 marker_size=6,
@@ -622,7 +630,7 @@ def default_plot(df, analysis, intersect_len, outpath, axis_names, hovertmp, voc
                         marker_colorscale='Plasma',
                         marker_showscale=True,
                         marker_size=6,
-                        name="",
+                        name="collection_date",
                         opacity=0,
                         marker_colorbar=dict(tickvals=tickvals, ticktext=ticktext, title_text='collection_date'),
                         customdata=df,
@@ -649,10 +657,10 @@ def default_plot(df, analysis, intersect_len, outpath, axis_names, hovertmp, voc
 
 @cli.command()
 @click.option('-d', '--distance_file', type=click.Path(exists=True), required=True, help='Distance file obtained from cov-dist "dist" command.')
-@click.option('-m', '--meta', type=click.Path(exists=True), required=True, help='Meta data for samples. Must have at least three columns - "sample", "collection_date" and "collection_site".')
+@click.option('-m', '--meta', type=click.Path(exists=True), required=True, help='Tab-delimited metadata for samples. Must have at least three columns - "sample", "collection_date" and "collection_site".')
 @click.option('-c', '--column', type=str, default="default", required=False, help='The column name in the meta data to color the samples. Default collection_date and collection_site are used to plot figures.')
-@click.option('-a', '--analysis', type=click.Choice(['PCoA', 'MDS', 'TSNE'], case_sensitive=False), required=False, default="PCoA", help='Method to show samples. Can be choosen from PCoA (default), MDS, TSNE.')
-@click.option('-v', '--voc_meta', type=click.Path(exists=True), required=False, default=None, help='Metadata for VOC.')
+@click.option('-a', '--analysis', type=click.Choice(['PCoA', 'MDS', 'TSNE'], case_sensitive=False), required=False, default="PCoA", help='Method to show samples. Can be choosen from PCoA (default), MDS, TSNE. Case is not sensitive.')
+@click.option('-v', '--voc_meta', type=click.Path(exists=True), required=False, default=None, help='Tab-delimited metadata file for VOC. At least two columns are needed: "sample" (VOC name, e.g: BA.1, AY.4 and etc.) and "group" (lineage group, e.g. Omicron, Delta and etc.).')
 @click.option('-o', '--out', 'outpath', required=True, help='Output folder name')
 def plot(distance_file, meta, column, analysis, voc_meta, outpath):
     """Perform ordination analysis and visualize results."""
@@ -663,6 +671,8 @@ def plot(distance_file, meta, column, analysis, voc_meta, outpath):
 
     if not os.path.exists(outpath):
         os.mkdir(outpath)
+    else:
+        logger.warning('Outpath already exists and may be overwritten!')
 
     logger.info('Performing {} ordination analysis'.format(analysis))
     dist = pd.read_csv(distance_file, sep="\t", header=0, index_col=0)
@@ -692,7 +702,7 @@ def plot(distance_file, meta, column, analysis, voc_meta, outpath):
     if voc_meta is not None:
         metadt_voc = pd.read_csv(voc_meta, sep="\t", header=0)
         check_meta_column("sample", metadt_voc.columns)
-        check_meta_column("type", metadt_voc.columns)
+        check_meta_column("group", metadt_voc.columns)
         metadata['voc']='no'
         metadt_voc['voc']='yes'
         merged_metadata = pd.concat([metadata, metadt_voc], ignore_index=True)
@@ -755,7 +765,6 @@ def plot(distance_file, meta, column, analysis, voc_meta, outpath):
     # generate plot dataframe
     df = dt.join(merged_metadata.set_index('sample'), on='sample', how='inner')
     df.index = df.index.map(str) # this step is important
-    df.fillna('NA', inplace=True)
 
     # reorder df
     ess_cols = ['sample','collection_date','collection_site']
