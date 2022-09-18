@@ -75,7 +75,7 @@ Options:
 * voc: A VOC (Variant Of Concern) folder path containing VOC vcf files, no depth files are needed. It can be used to investigate how close custom samples are to VOC lineages.
 * out: Output folder name.
 
-- prefix list file example:
+> prefix list file example:
 ```
 data/test/3194
 data/test/3270
@@ -84,7 +84,7 @@ data/test/B319
 ...
 ```
 
-- VOC folder structure example:
+> VOC folder structure example:
 ```
 voc_vcf/
 ├── AY.10.vcf
@@ -133,7 +133,7 @@ Options:
 * voc_meta: A metadata file for VOC (tab-delimited). It must has "sample" and "group" columns.
 * out: Output folder name.
 
-- metadata example:
+> metadata example:
 ```
 sample  collection_site collection_date sample_group
 2367    Arizona 2021-07-22      Batch1
@@ -146,7 +146,7 @@ sample  collection_site collection_date sample_group
 ...
 ```
 
-- metadata for voc example:
+> metadata for voc example:
 ```
 sample  group
 BA.1.14.2       Omicron
