@@ -54,7 +54,7 @@ Options:
                           data/NC_045512.2.fasta]
   -c, --cov FLOAT         Only samples with reads mapped to equal to or
                           greater than this fraction of the genome will be
-                          used for PcoA analysis [default: 0.5].
+                          used for ordination analysis [default: 0.5].
   -d, --depth INTEGER     Depth cutoff to include positions when calculating
                           coverage [default: 10].
   -t, --threads INTEGER   Number of threads used for computing [default: all

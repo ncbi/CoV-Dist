@@ -302,7 +302,7 @@ def cli():
 @cli.command()
 @click.option('-p', '--prefix_list', required=True, type=click.Path(exists=True), help='A file that lists the prefix for vcf and corresponidng depth files.')
 @click.option('-r', '--ref', 'refpath', required=False, default=os.path.join(os.path.abspath(os.path.dirname( __file__ )), "data", "NC_045512.2.fasta"), type=click.Path(exists=True), help='Input reference file. [default: data/NC_045512.2.fasta]')
-@click.option('-c', '--cov', 'required_coverage', required=False, default=0.5, type=float, help='Only samples with reads mapped to equal to or greater than this fraction of the genome will be used for PcoA analysis [default: 0.5].')
+@click.option('-c', '--cov', 'required_coverage', required=False, default=0.5, type=float, help='Only samples with reads mapped to equal to or greater than this fraction of the genome will be used for ordination analysis [default: 0.5].')
 @click.option('-d', '--depth', 'cov_depth_cutoff', required=False, default=10, type=int, help='Depth cutoff to include positions when calculating coverage [default: 10].')
 @click.option('-t', '--threads', 'cpus', required=False, default=cpu_count(), type=int, help='Number of threads used for computing [default: all available cpus].')
 @click.option('-v', '--voc', 'voc_dir', required=False, default=None, help='VOC (Variant Of Concern) folder name containing VOC vcf files, no depth files are needed (default is None).')
