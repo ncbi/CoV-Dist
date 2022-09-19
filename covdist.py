@@ -687,7 +687,6 @@ def plot(distance_file, meta, column, analysis, voc_meta, outdir):
     metadata = pd.read_csv(meta, sep="\t", header=0)
     # check sample column
     check_meta_column("sample", metadata.columns)
-
     # check collection_date column
     check_meta_column("collection_date", metadata.columns)
     for date_str in metadata['collection_date']:
@@ -698,7 +697,7 @@ def plot(distance_file, meta, column, analysis, voc_meta, outdir):
             sys.exit()
     # check collection_site column
     check_meta_column("collection_site", metadata.columns)
-    # check user custom column
+    # check user provided column
     check_meta_column(column, metadata.columns)
 
     if voc_meta is not None:
@@ -721,17 +720,21 @@ def plot(distance_file, meta, column, analysis, voc_meta, outdir):
     diff_samples = set(sample_names).difference(set(list(merged_metadata['sample'])))
     diff_len = len(diff_samples)
     if diff_len == 1:
-       logger.warning('One sample ({}) is not found in metadata.'.format(diff_samples[0]))
+       logger.warning('One sample ({}) is not found in metadata.'.format(list(diff_samples)[0]))
     elif 1 < diff_len <= 10:
         logger.warning('{0} samples ({1}) are not found in metadata.'.format(diff_len, ", ".join(list(diff_samples))))
     elif diff_len > 10:
         logger.warning('{0} samples ({1}) ... are not found in metadata.'.format(diff_len, ", ".join(list(diff_samples)[:10])))
     
-    intersect_samples = set(sample_names).intersection(set(list(merged_metadata['sample'])))
+    intersect_samples = list(set(sample_names).intersection(set(list(merged_metadata['sample']))))
     intersect_len = len(intersect_samples)
     if intersect_len == 0:
         logger.error('No samples are not found in metadata.')
         sys.exit()
+
+    # subsampling distance matrix with intersect samples in metadata
+    dist = dist.loc[intersect_samples, intersect_samples]
+    cur_sample_names = list(dist.index.astype('string'))
 
     ########
     # PcoA #
@@ -739,7 +742,7 @@ def plot(distance_file, meta, column, analysis, voc_meta, outdir):
     if analysis == "PCoA":
         ordination_result = dist2PcoA(dist)
         dt = ordination_result.samples.loc[:,['PC1', 'PC2', 'PC3']]
-        dt['sample'] = sample_names
+        dt['sample'] = cur_sample_names
         axis_names = ["PC" + str(index+1) + " ("+ '{:.2f}'.format(prop*100) +"%)" for index, prop in enumerate(ordination_result.proportion_explained[:3])]
 
     #######
@@ -750,7 +753,7 @@ def plot(distance_file, meta, column, analysis, voc_meta, outdir):
         mds = MDS(n_components=3, dissimilarity="precomputed")
         mds_fit = mds.fit(dist)
         dt = pd.DataFrame(mds_fit.embedding_, columns=['PC1', 'PC2', 'PC3'])
-        dt['sample'] = sample_names
+        dt['sample'] = cur_sample_names
         axis_names = ["Dimension 1", "Dimension 2", "Dimension 3"]
 
     #########
@@ -761,12 +764,12 @@ def plot(distance_file, meta, column, analysis, voc_meta, outdir):
         tsne = TSNE(n_components=3, metric="precomputed", learning_rate='auto')
         tsne_fit = tsne.fit(dist)
         dt = pd.DataFrame(tsne_fit.embedding_, columns=['PC1', 'PC2', 'PC3'])
-        dt['sample'] = sample_names
+        dt['sample'] = cur_sample_names
         axis_names = ["t-SNE 1", "t-SNE 2", "t-SNE 3"]
 
     # generate plot dataframe
     df = dt.join(merged_metadata.set_index('sample'), on='sample', how='inner')
-    df.index = df.index.map(str) # this step is important
+    df.index = df.index.map(str) # this step is important for mapping and sorting collection_date column
 
     # reorder df
     ess_cols = ['sample','collection_date','collection_site']
