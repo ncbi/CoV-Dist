@@ -156,6 +156,7 @@ After running dist and plot, a total of 4 files will be generated as listed belo
 2. <PCoA|MDS|TSNE>ordination_result.txt
 3. <pcoa|mds|tsne>_plot_2d.html
 4. <pcoa|mds|tsne>_plot_3d.html
+```
 
 * Calculated distance matrix: `distance.txt`. It could be used as input for other dimensionality reduction methods.
 * Output from the PCoA, MDS or t-SNE: `<PCoA|MDS|TSNE>ordination_result.txt`. It could be used as input data for your preferred data visualization tool to plot the results.
