@@ -1,4 +1,4 @@
-![CoV-Dist ](covdist.svg)
+![CoV-Dist ](./img.svg)
 
 ## Overview
 A python script to measure the dissimilarity distance between SARS-CoV-2 metagenome samples.
@@ -12,19 +12,10 @@ It will
 ## Prerequisites
 ```
 # set conda environment
-conda create --name cov-dist python=3.8 biopython scikit-bio click pyvcf
-conda install -c plotly plotly=5.10.0
-conda install scipy==1.8.1 # downgrade scipy to make it compatible with scikit-bio
+conda create --name cov-dist python=3.8 biopython scikit-bio click pyvcf plotly=5.10.0 scipy==1.8.1
 conda activate cov-dist
 ```
 
-```
-# alternatively, we also support mamba
-mamba create --name cov-dist python=3.8 biopython scikit-bio click pyvcf
-mamba install -c plotly plotly=5.10.0
-mamba install scipy==1.8.1 # downgrade scipy to make it compatible with scikit-bio
-mamba activate cov-dist
-```
 
 ## Tutorial
 
