@@ -12,10 +12,10 @@ It will
 ## Prerequisites
 ```
 # set conda environment
-conda create --name cov-dist python=3.8 biopython scikit-bio click pyvcf plotly=5.10.0 scipy==1.8.1
+conda config --add channels plotly
+conda create --name cov-dist python=3.8 biopython scikit-bio click pyvcf plotly=5.10.0 scipy=1.8.1 # scipy=1.8.1 is make scipy compatible with scikit-bio
 conda activate cov-dist
 ```
-
 
 ## Tutorial
 
@@ -51,7 +51,7 @@ Options:
   -v, --voc TEXT          VOC (Variant Of Concern) folder name containing VOC
                           vcf files, no depth files are needed (default is
                           None).
-  -o, --out TEXT          Output folder name  [required]
+  -o, --outpath TEXT      Output file path.  [required]
   -h, --help              Show this message and exit.
 ```
 
@@ -62,7 +62,7 @@ Options:
 * depth: A depth threshold to include positions when calculating coverage.
 * threads: Number of cpus used for computing in parallel.
 * voc: A VOC (Variant Of Concern) folder path containing VOC vcf files, no depth files are needed. It can be used to investigate how close custom samples are to VOC lineages.
-* out: Output folder name.
+* outpath: Output file path.
 
 > prefix list file example:
 ```
@@ -150,14 +150,12 @@ AY.30   Delta
 ```
 
 ### Output summary
-After running dist and plot, in the output directory, 4 files will be generated as listed below:
+After running dist and plot, a total of 4 files will be generated as listed below:
 ```
-data/test/testout
-├── distance.txt
-├── <PCoA|MDS|TSNE>ordination_result.txt
-├── <pcoa|mds|tsne>_plot_2d.html
-└── <pcoa|mds|tsne>_plot_3d.html
-```
+1. distance.txt
+2. <PCoA|MDS|TSNE>ordination_result.txt
+3. <pcoa|mds|tsne>_plot_2d.html
+4. <pcoa|mds|tsne>_plot_3d.html
 
 * Calculated distance matrix: `distance.txt`. It could be used as input for other dimensionality reduction methods.
 * Output from the PCoA, MDS or t-SNE: `<PCoA|MDS|TSNE>ordination_result.txt`. It could be used as input data for your preferred data visualization tool to plot the results.
