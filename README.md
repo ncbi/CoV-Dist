@@ -49,7 +49,7 @@ Options:
   -t, --threads INTEGER   Number of threads used for computing [default: all
                           available cpus].
   -v, --voc TEXT          VOC (Variant Of Concern) folder name containing VOC
-                          vcf files, no depth files are needed (default is
+                          vcf files and no depth files are needed (default is
                           None).
   -o, --outpath TEXT      Output file name.  [required]
   -h, --help              Show this message and exit.
@@ -120,7 +120,7 @@ Options:
 * meta: A metadata file (tab-delimited) and column names "sample", "collection_date" and "collection_site" is required.
 * column: The column name in the meta data file that will be used to color samples in the pcoa plot. By default, "collection_date" and "collection_site" will be used to generate a special scatter plots. Otherwise, the program will use the specified column.
 * analysis: Method to show samples. Can be choosen from PCoA (default), MDS, TSNE. Since case is not sensitive, uppercase and lowercase letters are both allowed.
-* voc_meta: A metadata file for VOC (tab-delimited). It must has "sample" and "group" columns.
+* voc_meta: A metadata file for VOC (tab-delimited). It must have "sample" and "group" columns.
 * out: Output folder name.
 
 > metadata example:
