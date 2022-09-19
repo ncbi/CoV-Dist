@@ -460,10 +460,9 @@ def other_col_plot(df, column, analysis, intersect_len, outpath, axis_names, hov
                                      marker_symbol=[
                                          my_symbols[index % len(my_symbols)]]*df_typ.shape[0],
                                      name=typ,
-                                     hoverinfo='skip',  # no hover text
-                                     showlegend=True,
                                      customdata=df2,
                                      hovertemplate=hovertmp,
+                                     showlegend=True,
                                      legendgroup=legendgroup,
                                      legendgrouptitle_text=legendgrouptitle_text
                                      )
@@ -738,11 +737,11 @@ def plot(distance_file, meta, column, analysis, voc_meta, outdir):
     warnings.simplefilter(action='ignore', category=FutureWarning)
     warnings.simplefilter(action='ignore', category=RuntimeWarning)
 
+    outdir = os.path.abspath(outdir)
     if not os.path.exists(outdir):
-        os.mkdir(outdir)
+        os.makedirs(outdir)
     else:
-        logger.warning(
-            'Output directory already exists and may be overwritten!')
+        logger.warning('Output directory already exists and may be overwritten!')
 
     logger.info('Performing {} ordination analysis'.format(analysis))
     dist = pd.read_csv(distance_file, sep="\t", header=0, index_col=0)
