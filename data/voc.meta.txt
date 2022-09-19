@@ -1,0 +1,11 @@
+sample	group
+21K (Omicron)	Omicron
+21L (Omicron)	Omicron
+21M (Omicron)	Omicron
+22A (Omicron)	Omicron
+22B (Omicron)	Omicron
+22C (Omicron)	Omicron
+22D (Omicron)	Omicron
+21A (Delta)	Delta
+21I (Delta)	Delta
+21J (Delta)	Delta
