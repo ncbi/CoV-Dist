@@ -163,4 +163,11 @@ After running dist and plot, a total of 4 files will be generated as listed belo
 * Plotly html (including both 3d and 2d scatter plots) with which user can interacte in the broswer and download a perferable snapshot as PNG: `<pcoa|mds|tsne>_plot_<3d|2d>.html`
 
 ## Notes
+* You can use (UShER)[https://github.com/yatisht/usher] to retrive and update SARS-CoV-2 lineage information and convert that into `vcf` format
+  ```
+  wget http://hgdownload.soe.ucsc.edu/goldenPath/wuhCor1/UShER_SARS-CoV-2/public-latest.all.masked.pb.gz
+  matUtils extract -i public-latest.all.masked.pb.gz -C lineagePaths.txt
+  mkdir -p voc_vcf
+  python ./usher_lineage2vcf.py lineagePaths.txt voc_vcf
+  ```
 * If there is zero coverage for a position in the alignment, we assume the dissimilarity in that position is zero, which could lead to an underestimation of the distance between samples with low coverage.
