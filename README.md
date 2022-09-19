@@ -124,14 +124,14 @@ Options:
 
 > metadata example:
 ```
-sample  collection_site collection_date sample_group
-2367    Arizona 2021-07-22      Batch1
-2370    Arizona 2021-07-22      Batch1
-4010    Arizona 2022-06-06      Batch10
-3939    Arizona 2022-05-23      Batch10
-4011    Arizona 2022-06-06      Batch10
-4012    Arizona 2022-06-06      Batch10
-4013    Arizona 2022-06-06      Batch10
+sample  collection_site collection_date
+2367    Arizona 2021-07-22
+2370    Arizona 2021-07-22
+4010    Arizona 2022-06-06
+3939    Arizona 2022-05-23
+4011    Arizona 2022-06-06
+4012    Arizona 2022-06-06
+4013    Arizona 2022-06-06
 ...
 ```
 
