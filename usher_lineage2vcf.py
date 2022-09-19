@@ -52,7 +52,5 @@ for i in lineageInfo:
     f=open(out_path+"/"+i+".vcf","w")
     f.write("#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT\n")
     for j in lineageInfo[i]:
-        #print(i+"\t"+j+"\t"+str(lineageInfo[i][j]))
         f.write("NC_045512.2\t"+str(j)+"\t.\t"+lineageInfo[i][j][0]+"\t"+lineageInfo[i][j][1]+"\t.\tPASS\t.\t.\n")
     f.close()
-
