@@ -345,11 +345,11 @@ def cli():
 @click.option('-d', '--depth', 'cov_depth_cutoff', required=False, default=10, type=int, help='Depth cutoff to include positions when calculating coverage [default: 10].')
 @click.option('-t', '--threads', 'cpus', required=False, default=cpu_count(), type=int, help='Number of threads used for computing [default: all available cpus].')
 @click.option('-v', '--voc', 'voc_dir', required=False, default=None, help='VOC (Variant Of Concern) folder name containing VOC vcf files, no depth files are needed (default is None).')
-@click.option('-o', '--outpath', 'outpath', required=True, help='Output file path.')
+@click.option('-o', '--outpath', 'outpath', required=True, help='Output file name.')
 def dist(prefix_list, refpath, cov_depth_cutoff, required_coverage, cpus, voc_dir, outpath):
     """Compute pairwise metagenome distance for SARS-CoV-2 samples."""
     if os.path.exists(outpath):
-        logger.warning('Outpath already exists and will be overwritten!')
+        logger.warning('Output file name already exists and will be overwritten!')
     else:
         outdir = os.path.abspath(os.path.dirname(outpath))
         os.makedirs(outdir, exist_ok=True)
@@ -729,7 +729,7 @@ def default_plot(df, analysis, intersect_len, outpath, axis_names, hovertmp, voc
 @click.option('-c', '--column', type=str, default="default", required=False, help='The column name in the meta data to color the samples. Default collection_date and collection_site are used to plot figures.')
 @click.option('-a', '--analysis', type=click.Choice(['PCoA', 'MDS', 'TSNE'], case_sensitive=False), required=False, default="PCoA", help='Method to show samples. Can be choosen from PCoA (default), MDS, TSNE. Case is not sensitive.')
 @click.option('-v', '--voc_meta', type=click.Path(exists=True), required=False, default=None, help='Tab-delimited metadata file for VOC. At least two columns are needed: "sample" (VOC name, e.g: BA.1, AY.4 and etc.) and "group" (lineage group, e.g. Omicron, Delta and etc.).')
-@click.option('-o', '--out', 'outdir', required=True, help='Output folder name')
+@click.option('-o', '--outdir', 'outdir', required=True, help='Output folder name')
 def plot(distance_file, meta, column, analysis, voc_meta, outdir):
     """Perform ordination analysis and visualize results."""
 

@@ -51,7 +51,7 @@ Options:
   -v, --voc TEXT          VOC (Variant Of Concern) folder name containing VOC
                           vcf files, no depth files are needed (default is
                           None).
-  -o, --outpath TEXT      Output file path.  [required]
+  -o, --outpath TEXT      Output file name.  [required]
   -h, --help              Show this message and exit.
 ```
 
@@ -110,7 +110,7 @@ Options:
                                   name, e.g: BA.1, AY.4 and etc.) and "group"
                                   (lineage group, e.g. Omicron, Delta and
                                   etc.).
-  -o, --out TEXT                  Output folder name  [required]
+  -o, --outdir TEXT               Output folder name  [required]
   -h, --help                      Show this message and exit.
 ```
 
