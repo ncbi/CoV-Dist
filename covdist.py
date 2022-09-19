@@ -726,7 +726,7 @@ def default_plot(df, analysis, intersect_len, outpath, axis_names, hovertmp, voc
 @cli.command()
 @click.option('-d', '--distance_file', type=click.Path(exists=True), required=True, help='Distance file obtained from cov-dist "dist" command.')
 @click.option('-m', '--meta', type=click.Path(exists=True), required=True, help='Tab-delimited metadata for samples. Must have at least three columns - "sample", "collection_date" and "collection_site".')
-@click.option('-c', '--column', type=str, default="default", required=False, help='The column name in the meta data to color the samples. Default collection_date and collection_site are used to plot figures.')
+@click.option('-c', '--column', type=str, default="default", required=False, help='The column name in the meta data to color the samples. Default collection_date and collection_site are used to plot figures, but another column can also be provided.')
 @click.option('-a', '--analysis', type=click.Choice(['PCoA', 'MDS', 'TSNE'], case_sensitive=False), required=False, default="PCoA", help='Method to show samples. Can be choosen from PCoA (default), MDS, TSNE. Case is not sensitive.')
 @click.option('-v', '--voc_meta', type=click.Path(exists=True), required=False, default=None, help='Tab-delimited metadata file for VOC. At least two columns are needed: "sample" (VOC name, e.g: BA.1, AY.4 and etc.) and "group" (lineage group, e.g. Omicron, Delta and etc.).')
 @click.option('-o', '--outdir', 'outdir', required=True, help='Output folder name')

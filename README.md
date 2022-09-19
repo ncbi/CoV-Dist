@@ -101,7 +101,8 @@ Options:
                                   [required]
   -c, --column TEXT               The column name in the meta data to color
                                   the samples. Default collection_date and
-                                  collection_site are used to plot figures.
+                                  collection_site are used to plot figures,
+                                  but another column can also be provided.
   -a, --analysis [PCoA|MDS|TSNE]  Method to show samples. Can be choosen from
                                   PCoA (default), MDS, TSNE. Case is not
                                   sensitive.
