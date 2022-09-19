@@ -116,8 +116,8 @@ Options:
 
 ### plot input
 * distance_file: The distance matrix resulting from "dist" command or any other distance matrix as long as its rownames and colnames are the same to the basename of the prefices and in the same order as the those in prefix file (e.g. if prefix is "a/b/c/xyz", the corresponding rowname and colname are "xyz").
-* meta: A metadata file (tab-delimited) and it must has "sample", "collection_date" and "collection_site" columns.
-* column: A column name in the meta data used to color samples in the pcoa plot. By default, "collection_date" and "collection_site" will be used to generate a special scatter plots. Otherwise, the program will use a provided column.
+* meta: A metadata file (tab-delimited) and column names "sample", "collection_date" and "collection_site" is required.
+* column: The column name in the meta data file that will be used to color samples in the pcoa plot. By default, "collection_date" and "collection_site" will be used to generate a special scatter plots. Otherwise, the program will use the specified column.
 * analysis: Method to show samples. Can be choosen from PCoA (default), MDS, TSNE. Since case is not sensitive, uppercase and lowercase letters are both allowed.
 * voc_meta: A metadata file for VOC (tab-delimited). It must has "sample" and "group" columns.
 * out: Output folder name.
@@ -163,7 +163,7 @@ After running dist and plot, a total of 4 files will be generated as listed belo
 * Plotly html (including both 3d and 2d scatter plots) with which user can interacte in the broswer and download a perferable snapshot as PNG: `<pcoa|mds|tsne>_plot_<3d|2d>.html`
 
 ## Notes
-* You can use (UShER)[https://github.com/yatisht/usher] to retrive and update SARS-CoV-2 lineage information and convert that into `vcf` format
+* You can use [UShER](https://github.com/yatisht/usher) to retrive and update SARS-CoV-2 lineage information and convert that into `vcf` format
   ```
   wget http://hgdownload.soe.ucsc.edu/goldenPath/wuhCor1/UShER_SARS-CoV-2/public-latest.all.masked.pb.gz
   matUtils extract -i public-latest.all.masked.pb.gz -C lineagePaths.txt
