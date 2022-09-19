@@ -13,7 +13,7 @@ It will
 ```
 # set conda environment
 conda config --add channels plotly
-conda create --name cov-dist python=3.8 biopython scikit-bio click pyvcf plotly=5.10.0 scipy=1.8.1 # scipy=1.8.1 is make scipy compatible with scikit-bio
+conda create --name cov-dist python=3.8 biopython scikit-bio click pyvcf plotly=5.10.0 scipy=1.8.1 # scipy=1.8.1 is to make scipy compatible with scikit-bio
 conda activate cov-dist
 ```
 
@@ -37,8 +37,8 @@ Usage: covdist.py dist [OPTIONS]
   Compute pairwise metagenome distance for SARS-CoV-2 samples.
 
 Options:
-  -p, --prefix_list PATH  A file that lists the prefix for vcf and
-                          corresponidng depth files.  [required]
+  -p, --prefix_list PATH  A file that lists the prefix path for vcf and
+                          corresponding depth files.  [required]
   -r, --ref PATH          Input reference file. [default:
                           data/NC_045512.2.fasta]
   -c, --cov FLOAT         Only samples with reads mapped to equal to or
@@ -153,15 +153,14 @@ AY.30   Delta
 After running dist and plot, a total of 4 files will be generated as listed below:
 ```
 1. distance.txt
-2. <PCoA|MDS|TSNE>ordination_result.txt
+2. <PCoA|MDS|TSNE>_ordination_result.txt
 3. <pcoa|mds|tsne>_plot_2d.html
 4. <pcoa|mds|tsne>_plot_3d.html
 ```
 
 * Calculated distance matrix: `distance.txt`. It could be used as input for other dimensionality reduction methods.
-* Output from the PCoA, MDS or t-SNE: `<PCoA|MDS|TSNE>ordination_result.txt`. It could be used as input data for your preferred data visualization tool to plot the results.
+* Output from the PCoA, MDS or t-SNE: `<PCoA|MDS|TSNE>_ordination_result.txt`. It could be used as input data for your preferred data visualization tool to plot the results.
 * Plotly html (including both 3d and 2d scatter plots) with which user can interacte in the broswer and download a perferable snapshot as PNG: `<pcoa|mds|tsne>_plot_<3d|2d>.html`
 
 ## Notes
 * If there is zero coverage for a position in the alignment, we assume the dissimilarity in that position is zero, which could lead to an underestimation of the distance between samples with low coverage.
-* This method in theory could be measure dissimilarity between metagenomes and isolate genomes.
