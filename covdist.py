@@ -426,23 +426,25 @@ def check_meta_column(column, target_columns):
         sys.exit()
 
 
-def other_col_plot(df, column, analysis, intersect_len, outpath, axis_names, hovertmp, voc=False, mode="3d"):
+def other_col_plot(df, column, analysis, outpath, axis_names, hovertmp, voc=False, mode="3d"):
 
     # to deal with unavailable value in hoverinfo
-    df.fillna('NA', inplace=True)
+    df.fillna('-', inplace=True)
 
     fig = go.Figure()
     if mode == "3d":
         if voc == False:
             plot3d = px.scatter_3d(df, x='PC1', y='PC2', z='PC3', color=column,
-                                   color_continuous_scale="Viridis", hover_data=list(df.columns))
+                                   color_continuous_scale="Viridis", custom_data=list(df.columns))
             fig.add_traces(list(plot3d.select_traces()))
+            fig.update_traces(hovertemplate=hovertmp, hoverlabel=dict(namelength=0))
         else:
             df1 = df[df['voc'] == 'no']
             plot3d = px.scatter_3d(df1, x='PC1', y='PC2', z='PC3', color=column,
-                                   color_continuous_scale="Viridis", hover_data=list(df1.columns))
+                                   color_continuous_scale="Viridis", custom_data=list(df1.columns))
             fig.add_traces(list(plot3d.select_traces()))
-
+            fig.update_traces(hovertemplate=hovertmp, hoverlabel=dict(namelength=0),)
+            
             df2 = df[df['voc'] == 'yes']
             unique_type = df2['group'].unique()
             for index, typ in enumerate(unique_type):
@@ -462,13 +464,14 @@ def other_col_plot(df, column, analysis, intersect_len, outpath, axis_names, hov
                                      name=typ,
                                      customdata=df2,
                                      hovertemplate=hovertmp,
+                                     hoverlabel=dict(namelength=0),
                                      showlegend=True,
                                      legendgroup=legendgroup,
                                      legendgrouptitle_text=legendgrouptitle_text
                                      )
                 fig.add_trace(trace)
 
-        fig.update_layout(title="CoV-Dist {0} {1} with {2} samples".format(mode, analysis, intersect_len),
+        fig.update_layout(title="CoV-Dist {0} {1}".format(mode, analysis),
                           scene=dict(
             xaxis_title=axis_names[0],
             yaxis_title=axis_names[1],
@@ -477,13 +480,15 @@ def other_col_plot(df, column, analysis, intersect_len, outpath, axis_names, hov
     elif mode == "2d":
         if voc == False:
             plot2d = px.scatter(df, x='PC1', y='PC2', color=column,
-                                color_continuous_scale="Viridis", hover_data=list(df.columns))
+                                color_continuous_scale="Viridis", custom_data=list(df.columns))
             fig.add_traces(list(plot2d.select_traces()))
+            fig.update_traces(hovertemplate=hovertmp, hoverlabel=dict(namelength=0),)
         else:
             df1 = df[df['voc'] == 'no']
             plot2d = px.scatter(df1, x='PC1', y='PC2', color=column,
-                                color_continuous_scale="Viridis", hover_data=list(df1.columns))
+                                color_continuous_scale="Viridis", custom_data=list(df1.columns))
             fig.add_traces(list(plot2d.select_traces()))
+            fig.update_traces(hovertemplate=hovertmp, hoverlabel=dict(namelength=0),)
 
             df2 = df[df['voc'] == 'yes']
             unique_type = df2['group'].unique()
@@ -504,13 +509,14 @@ def other_col_plot(df, column, analysis, intersect_len, outpath, axis_names, hov
                                    name=typ,
                                    customdata=df2,
                                    hovertemplate=hovertmp,
+                                   hoverlabel=dict(namelength=0),
                                    showlegend=True,
                                    legendgroup=legendgroup,
                                    legendgrouptitle_text=legendgrouptitle_text
                                    )
                 fig.add_trace(trace)
 
-        fig.update_layout(title="CoV-Dist {0} {1} with {2} samples".format(mode, analysis, intersect_len),
+        fig.update_layout(title="CoV-Dist {0} {1}".format(mode, analysis),
                           xaxis_title=axis_names[0],
                           yaxis_title=axis_names[1])
 
@@ -529,7 +535,7 @@ def other_col_plot(df, column, analysis, intersect_len, outpath, axis_names, hov
         "{0}/{1}_plot_{2}.html".format(outpath, analysis.lower(), mode))
 
 
-def default_plot(df, analysis, intersect_len, outpath, axis_names, hovertmp, voc=False, mode="3d"):
+def default_plot(df, analysis, outpath, axis_names, hovertmp, voc=False, mode="3d"):
 
     df['collection_date'] = pd.to_datetime(df['collection_date']).dt.date
     df = df.sort_values(by='collection_date')
@@ -546,7 +552,7 @@ def default_plot(df, analysis, intersect_len, outpath, axis_names, hovertmp, voc
         "%Y-%m-%d") for id in index_tickvals]
 
     # to deal with unavailable value in hoverinfo
-    df.fillna('NA', inplace=True)
+    df.fillna('-', inplace=True)
 
     fig = go.Figure()
     if mode == "3d":
@@ -618,12 +624,12 @@ def default_plot(df, analysis, intersect_len, outpath, axis_names, hovertmp, voc
                                    opacity=0,
                                    showlegend=False,
                                    marker_colorbar=dict(
-                                       tickvals=tickvals, ticktext=ticktext, title_text='collection_date'),
+                                       tickvals=tickvals, ticktext=ticktext, title_text='Date'),
                                    customdata=df,
                                    hoverlabel=dict(namelength=0),
                                    hovertemplate=hovertmp))
 
-        fig.update_layout(title="CoV-Dist {0} {1} with {2} samples".format(mode, analysis, intersect_len),
+        fig.update_layout(title="CoV-Dist {0} {1}".format(mode, analysis),
                           scene=dict(
             xaxis_title=axis_names[0],
             yaxis_title=axis_names[1],
@@ -698,17 +704,17 @@ def default_plot(df, analysis, intersect_len, outpath, axis_names, hovertmp, voc
                                  opacity=0,
                                  showlegend=False,
                                  marker_colorbar=dict(
-                                     tickvals=tickvals, ticktext=ticktext, title_text='collection_date'),
+                                     tickvals=tickvals, ticktext=ticktext, title_text='Date'),
                                  customdata=df,
                                  hoverlabel=dict(namelength=0),
                                  hovertemplate=hovertmp))
 
-        fig.update_layout(title="CoV-Dist {0} {1} with {2} samples".format(mode, analysis, intersect_len),
+        fig.update_layout(title="CoV-Dist {0} {1}".format(mode, analysis),
                           xaxis_title=axis_names[0],
                           yaxis_title=axis_names[1])
 
     # both for 3d and 2d
-    fig.update_layout(legend_title_text="collection_site")
+    fig.update_layout(legend_title_text="Site")
 
     fig.update_layout(legend=dict(
         orientation="v",
@@ -741,7 +747,7 @@ def plot(distance_file, meta, column, analysis, voc_meta, outdir):
     if not os.path.exists(outdir):
         os.makedirs(outdir)
     else:
-        logger.warning('Output directory already exists and may be overwritten!')
+        logger.warning('Output directory already exists and will be overwritten!')
 
     logger.info('Performing {} ordination analysis'.format(analysis))
     dist = pd.read_csv(distance_file, sep="\t", header=0, index_col=0)
@@ -805,6 +811,8 @@ def plot(distance_file, meta, column, analysis, voc_meta, outdir):
     if intersect_len == 0:
         logger.error('No samples are not found in metadata.')
         sys.exit()
+    else:
+        logger.info('A total of {} samples will be used.'.format(intersect_len))
 
     # subsampling distance matrix with intersect samples in metadata
     dist = dist.loc[intersect_samples, intersect_samples]
@@ -858,19 +866,15 @@ def plot(distance_file, meta, column, analysis, voc_meta, outdir):
     hovertmp = generate_hovertemplate(list(df.columns), method=analysis)
     if column == "default":
         # plot 3d
-        default_plot(df, analysis, intersect_len, outdir,
-                     axis_names, hovertmp, voc=voc, mode="3d")
+        default_plot(df, analysis, outdir, axis_names, hovertmp, voc=voc, mode="3d")
         # plot 2d
-        default_plot(df, analysis, intersect_len, outdir,
-                     axis_names, hovertmp, voc=voc, mode="2d")
+        default_plot(df, analysis, outdir, axis_names, hovertmp, voc=voc, mode="2d")
     else:
         # others as column
         # plot 3d
-        other_col_plot(df, column, analysis, intersect_len,
-                       outdir, axis_names, hovertmp, voc=voc, mode="3d")
+        other_col_plot(df, column, analysis, outdir, axis_names, hovertmp, voc=voc, mode="3d")
         # plot 2d
-        other_col_plot(df, column, analysis, intersect_len,
-                       outdir, axis_names, hovertmp, voc=voc, mode="2d")
+        other_col_plot(df, column, analysis, outdir, axis_names, hovertmp, voc=voc, mode="2d")
 
     logger.info('Plotting is done!')
 
