@@ -1,5 +1,6 @@
 ![CoV-Dist ](./img.svg)
-- Click [here](https://htmlpreview.github.io/?https://github.com/ncbi/CoV-Dist/blob/main/pcoa_plot_3d.html) to play with the interactive pcoa plot Cov-dist generated.
+
+Click [here](https://htmlpreview.github.io/?https://github.com/ncbi/CoV-Dist/blob/main/pcoa_plot_3d.html) to play with the interactive PCoA plot CoV-dist generated.
 
 ## Overview
 A python script to measure the dissimilarity distance between SARS-CoV-2 metagenome samples.
