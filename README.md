@@ -1,6 +1,4 @@
-![CoV-Dist ](./img.svg)
-
-Click [here](https://htmlpreview.github.io/?https://github.com/ncbi/CoV-Dist/blob/main/pcoa_plot_3d.html) to play with the interactive PCoA plot CoV-dist generated. (It may take a while.)
+![CoV-Dist ](./images/img.svg)
 
 ## Overview
 A python script to measure the dissimilarity distance between SARS-CoV-2 metagenome samples.
@@ -164,6 +162,9 @@ After running dist and plot, a total of 4 files will be generated as listed belo
 * Calculated distance matrix: `distance.txt`. It could be used as input for other dimensionality reduction methods.
 * Output from the PCoA, MDS or t-SNE: `<PCoA|MDS|TSNE>_ordination_result.txt`. It could be used as input data for your preferred data visualization tool to plot the results.
 * Plotly html (including both 3d and 2d scatter plots) with which user can interacte in the broswer and download a perferable snapshot as PNG: `<pcoa|mds|tsne>_plot_<3d|2d>.html`
+
+Click [here](https://htmlpreview.github.io/?https://github.com/ncbi/CoV-Dist/blob/main/images/pcoa_plot_3d.html) to view the interactive PCoA plot CoV-dist generated.  
+![PCoA_3d_gif](./images/CoV-dist_PCoA_3d.gif)
 
 ## Notes
 * You can use [UShER](https://github.com/yatisht/usher) to retrive and update SARS-CoV-2 lineage information and convert that into `vcf` format
